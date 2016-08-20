@@ -1,3 +1,10 @@
+# Ignore credentials
+creds.py
+settings.py
+
+# Ignore local Django DB
+db.sqlite3
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
