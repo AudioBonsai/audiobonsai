@@ -15,7 +15,10 @@ Including another URLconf
 """
 from django.conf.urls import url
 from django.contrib import admin
+from spotify_helper.views import spotify_login, spotify_request_token
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
+    url(r'^spotify/request_token', spotify_request_token),
+    url(r'^spotify/login', spotify_login),
 ]

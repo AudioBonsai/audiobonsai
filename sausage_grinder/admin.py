@@ -1,11 +1,43 @@
 from audiobonsai import settings
 from django.contrib import admin
+from django.http import HttpResponseRedirect
+import json
 import re
 from sausage_grinder.models import CandidateSet, CandidateRelease
+from spotify_helper.models import SpotifyUser
 import spotipy
+
 from urllib.request import urlopen
 
 # Register your models here.
+
+
+def get_spotify_conn(request):
+    return_path = request.path
+    try:
+        auth_user = request.user.spotifyuser
+        auth_user.return_path = return_path
+        auth_user.save()
+    except:
+        print('USER EXCEPTION. DAFUQ?')
+        auth_user = SpotifyUser(user=request.user, return_path=return_path)
+        auth_user.save()
+        return HttpResponseRedirect(
+            'http://' + request.get_host() + '/spotify/request_token?return_path=' + return_path)
+
+    sp_oauth = spotipy.oauth2.SpotifyOAuth(settings.SPOTIPY_CLIENT_ID,
+                                           settings.SPOTIPY_CLIENT_SECRET,
+                                           'http://' + request.get_host() + '/spotify/login')
+
+    if len(auth_user.spotify_token) > 0:
+        token_info = json.loads(auth_user.spotify_token.replace('\'', '"'))
+        if sp_oauth._is_token_expired(token_info):
+            print('TOKEN REFRESH: EXPIRED: {1}, TOKEN: {0}'.format(token_info,
+                                                               sp_oauth._is_token_expired(token_info)))
+            return HttpResponseRedirect(
+                'http://' + request.get_host() + '/spotify/request_token')
+
+    return spotipy.Spotify(auth=token_info['access_token'])
 
 
 class CandidateSetAdmin(admin.ModelAdmin):
@@ -52,8 +84,19 @@ class CandidateReleaseAdmin(admin.ModelAdmin):
     actions = ['process_album']
 
     def process_album(self, request, queryset):
-        #token = sputil.prompt_for_user_token(settings.SPOTIFY_USERNAME, settings.SPOTIFY_SCOPE)
-        #sp = spotipy.Spotify(auth=token)
+        sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            print('Returning Redirect')
+            return sp
+        for album in queryset:
+            print(type(sp))
+            print(type(album))
+            print(album)
+            print(album.spotify_uri)
+            #if type(album) == 'HttpResponseRedirect':
+            #    return album
+            album_dets = sp.album(album.spotify_uri)
+            print(album_dets)
         return
 
 # Register your models here.
