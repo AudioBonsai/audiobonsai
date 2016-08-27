@@ -23,17 +23,16 @@ def get_spotify_conn(request):
         auth_user = SpotifyUser(user=request.user, return_path=return_path)
         auth_user.save()
         return HttpResponseRedirect(
-            'http://' + request.get_host() + '/spotify/request_token?return_path=' + return_path)
+            'http://' + request.get_host() + '/spotify/ask_user')
 
     sp_oauth = spotipy.oauth2.SpotifyOAuth(settings.SPOTIPY_CLIENT_ID,
                                            settings.SPOTIPY_CLIENT_SECRET,
-                                           'http://' + request.get_host() + '/spotify/login')
+                                           'http://' + request.get_host() + '/spotify/ask_user')
 
+    token_info = None
     if len(auth_user.spotify_token) > 0:
         token_info = json.loads(auth_user.spotify_token.replace('\'', '"'))
         if sp_oauth._is_token_expired(token_info):
-            print('TOKEN REFRESH: EXPIRED: {1}, TOKEN: {0}'.format(token_info,
-                                                               sp_oauth._is_token_expired(token_info)))
             return HttpResponseRedirect(
                 'http://' + request.get_host() + '/spotify/request_token')
 
@@ -77,26 +76,19 @@ class CandidateSetAdmin(admin.ModelAdmin):
 
 
 class CandidateReleaseAdmin(admin.ModelAdmin):
-    list_display = ['batch', 'spotify_uri', 'sorting_hat_rank', 'sorting_hat_track_num']
-    list_filter = ['batch']
-    ordering = ['batch', 'sorting_hat_rank', 'spotify_uri']
+    list_display = ['batch', 'title', 'spotify_uri', 'sorting_hat_rank', 'sorting_hat_track_num']
+    list_filter = ['batch', 'processed']
+    ordering = ['batch', 'sorting_hat_rank', 'processed', 'title']
     fields = ['spotify_uri']
     actions = ['process_album']
 
+    @staticmethod
     def process_album(self, request, queryset):
         sp = get_spotify_conn(request)
         if type(sp) is HttpResponseRedirect:
-            print('Returning Redirect')
             return sp
         for album in queryset:
-            print(type(sp))
-            print(type(album))
-            print(album)
-            print(album.spotify_uri)
-            #if type(album) == 'HttpResponseRedirect':
-            #    return album
-            album_dets = sp.album(album.spotify_uri)
-            print(album_dets)
+            album.process(sp)
         return
 
 # Register your models here.

@@ -1,17 +1,17 @@
 from audiobonsai import settings
-from django.shortcuts import render
 from django.http import HttpResponse, HttpResponseRedirect
 from spotify_helper.models import SpotifyUser
 from spotipy import oauth2
 
 # Create your views here.
 
+
 def get_spotipy_oauth(host_string):
     callback_url = 'http://' + host_string + '/spotify/login'
     return oauth2.SpotifyOAuth(settings.SPOTIPY_CLIENT_ID,
-                                   settings.SPOTIPY_CLIENT_SECRET,
-                                   callback_url,
-                                   scope=settings.SPOTIFY_SCOPE)
+                               settings.SPOTIPY_CLIENT_SECRET,
+                               callback_url,
+                               scope=settings.SPOTIFY_SCOPE)
 
 
 def get_return_path(request):
@@ -19,6 +19,14 @@ def get_return_path(request):
         return request.GET.dict()['return_path']
     except:
         return None
+
+
+def spotify_ask_user(request):
+    html = '<HTML><BODY>The requested operation requires permission to access your Spotify account. Click ' \
+           '<a href="http://' + request.get_host() + '/spotify/request_token/">here</a> to give Audio Bonsai Access. ' \
+           'Press the back button if you choose not to grant access.</BODY></HTML>'
+    return HttpResponse(html)
+
 
 def spotify_request_token(request):
     sp_oauth = get_spotipy_oauth(request.get_host())
@@ -45,18 +53,26 @@ def spotify_login(request):
     sp_oauth = get_spotipy_oauth(request.get_host())
 
     token_info = sp_oauth.get_access_token(request.GET.dict()['code'])
-    return_path = None
+
     try:
         auth_user = request.user.spotifyuser
         auth_user.spotify_token = token_info
         auth_user.save()
-        return_path = auth_user.return_path
     except:
         auth_user = SpotifyUser(user=request.user, spotify_token=token_info)
         auth_user.save()
 
-    if return_path is not None and len(return_path) > 0:
-        return HttpResponseRedirect(return_path)
-    else:
-        html = '<HTML><BODY><H1>SUCCESSFULLY AUTHENTICATED!</H1></BODY></HTML>'
-        return HttpResponse(html)
+    return HttpResponseRedirect('http://' + request.get_host() + '/spotify/confirm_access')
+
+
+def spotify_confirm_access(request):
+    try:
+        auth_user = request.user.spotifyuser
+        return_path = auth_user.return_path
+    except:
+        return HttpResponseRedirect('http://' + request.get_host())
+
+    html='<HTML><BODY>Access has been granted (or refreshed). <meta http-equiv="refresh" content="3;url=' \
+         + return_path + '"> Click <a href="' + return_path + '">here</a> to return and try your operation again ' \
+        'if you are not redirected shortly.  Thanks for using Audio Bonsai!</BODY></HTML>'
+    return HttpResponse(html)
