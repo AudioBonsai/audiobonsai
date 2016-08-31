@@ -4,7 +4,7 @@ from django.http import HttpResponseRedirect
 import json
 from pprint import pprint
 import re
-from sausage_grinder.models import CandidateSet, CandidateRelease, Genre
+from sausage_grinder.models import CandidateSet, CandidateRelease, Genre, CandidateTrack, CandidateArtist
 from spotify_helper.models import SpotifyUser
 import spotipy
 
@@ -42,12 +42,22 @@ def get_spotify_conn(request):
 
 class GenreAdmin(admin.ModelAdmin):
     list_display = ['name']
+    fields = ['name']
+
+
+class CandidateTrackAdmin(admin.ModelAdmin):
+    list_display = ['title', 'release', 'disc_number', 'track_number', 'duration', 'spotify_uri']
+    ordering = ['release', 'disc_number', 'track_number']
+
+
+class CandidateArtistAdmin(admin.ModelAdmin):
+    list_display = ['name', 'spotify_uri']
+    ordering = ['name']
 
 
 class CandidateSetAdmin(admin.ModelAdmin):
     list_display = ['week_date']
     ordering = ['week_date']
-    fields = ['week_date']
     actions = ['parse_sorting_hat']
 
     def parse_sorting_hat(self, request, queryset):
@@ -83,7 +93,6 @@ class CandidateReleaseAdmin(admin.ModelAdmin):
     list_display = ['batch', 'title', 'spotify_uri', 'sorting_hat_rank', 'sorting_hat_track_num']
     list_filter = ['batch', 'processed', 'eligible', 'genres']
     ordering = ['batch', 'sorting_hat_rank', 'processed', 'title']
-    fields = ['spotify_uri']
     actions = ['process_album']
 
     @staticmethod
@@ -111,7 +120,11 @@ class CandidateReleaseAdmin(admin.ModelAdmin):
         self.handle_album_list(sp, query_list)
         return
 
+
+
 # Register your models here.
+admin.site.register(CandidateArtist, CandidateArtistAdmin)
 admin.site.register(CandidateRelease, CandidateReleaseAdmin)
 admin.site.register(CandidateSet, CandidateSetAdmin)
+admin.site.register(CandidateTrack, CandidateTrackAdmin)
 admin.site.register(Genre, GenreAdmin)
