@@ -8,6 +8,8 @@ import re
 
 
 REMIX_REGEX = re.compile('.*remix.*', re.IGNORECASE)
+REMASTER_REGEX = re.compile('.*remaster.*', re.IGNORECASE)
+REISSUE_REGEX = re.compile('.*reissue.*', re.IGNORECASE)
 
 
 class CandidateSet(models.Model):
@@ -42,7 +44,8 @@ class CandidateRelease(models.Model):
     batch = models.IntegerField(default=0)
     week = models.ForeignKey(CandidateSet, on_delete=models.CASCADE)
     genres = models.ManyToManyField(Genre)
-    artists = models.ManyToManyField(CandidateArtist)
+    artists = models.ManyToManyField(CandidateArtist, through='CandidateArtistRelease',
+                                     through_fields=('release', 'artist'))
     release_date = models.DateField(auto_now=False, auto_now_add=False, null=True)
     title = models.CharField(max_length=255, default='', blank=True)
     image_640 = models.URLField(null=True)
@@ -68,6 +71,9 @@ class CandidateRelease(models.Model):
         elif self.release_date > self.week.week_date or self.week.week_date - self.release_date > timedelta(days=7):
             self.mark_ineligible()
             return False
+        elif REMIX_REGEX.match(self.title) or REISSUE_REGEX.match(self.title) or REMASTER_REGEX.match(self.title):
+            self.mark_ineligible()
+            return False
         elif album_dets[u'album_type'] == 'single' and len(album_dets[u'tracks'][u'items']) < 4:
             total_time = 0
             for track in album_dets[u'tracks'][u'items']:
@@ -76,19 +82,19 @@ class CandidateRelease(models.Model):
 
             if total_time < 900000:
                 self.mark_ineligible()
-                return False
+                return (False, None)
         return True
 
     def process(self, sp, album_dets):
+        track_list = []
         if self.processed:
-            return
+            return track_list
 
         self.release_date = datetime.strptime(album_dets[u'release_date'], '%Y-%m-%d').date()
-        if not self.check_eligility(album_dets):
-            return
-
-        pprint(album_dets)
         self.title = album_dets[u'name']
+        if not self.check_eligility(album_dets):
+            return track_list
+
         self.popularity = album_dets[u'popularity']
         for artist in album_dets[u'artists']:
             try:
@@ -96,7 +102,7 @@ class CandidateRelease(models.Model):
             except CandidateArtist.DoesNotExist:
                 artist_obj = CandidateArtist(spotify_uri=artist[u'uri'], name=artist[u'name'])
                 artist_obj.save()
-            self.artists.add(artist_obj)
+            CandidateArtistRelease.objects.create(artist=artist_obj, release=self)
         for genre in album_dets[u'genres']:
             try:
                 genre_obj = Genre.object.get(name=genre)
@@ -111,20 +117,25 @@ class CandidateRelease(models.Model):
                 self.image_300 = image[u'url']
             elif image[u'height'] == 64 or image[u'width'] == 64:
                 self.image_64 = image[u'url']
-
         for track in album_dets[u'tracks'][u'items']:
             track_obj = CandidateTrack(spotify_uri=track[u'uri'])
             track_obj.process_track(track, self)
-            track_obj.save()
+            track_list.append(track_obj)
 
         self.processed = True
         self.save()
+        return track_list
+
+
+class CandidateArtistRelease(models.Model):
+    artist = models.ForeignKey(CandidateArtist, on_delete=models.CASCADE)
+    release = models.ForeignKey(CandidateRelease, on_delete=models.CASCADE)
+    type = models.CharField(max_length=8, default='PRIMARY', choices=(('PRIMARY', 'PRIMARY'), ('FEATURED', 'FEATURED')))
 
 
 class CandidateTrack(models.Model):
     spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
     title = models.CharField(max_length=255, default='', blank=True)
-    artists = models.ManyToManyField(CandidateArtist)
     release = models.ForeignKey(CandidateRelease, on_delete=models.CASCADE)
     duration = models.IntegerField(default=0)
     track_number = models.IntegerField(default=0)
@@ -134,7 +145,7 @@ class CandidateTrack(models.Model):
         if len(self.title) == 0:
             return self.spotify_uri
         else:
-            return self.title + ' by ' + ', '.join([artist.name for artist in self.artists.all()])
+            return self.title
 
     def process_track(self, track_dets, release):
         self.title = track_dets[u'name']
@@ -149,4 +160,5 @@ class CandidateTrack(models.Model):
             except CandidateArtist.DoesNotExist:
                 artist_obj = CandidateArtist(spotify_uri=artist[u'uri'], name=artist[u'name'])
                 artist_obj.save()
-            self.artists.add(artist_obj)
+            if artist_obj not in release.artists.all():
+                CandidateArtistRelease.objects.create(artist=artist_obj, release=release, type='FEATURED')

@@ -90,20 +90,22 @@ class CandidateSetAdmin(admin.ModelAdmin):
 
 
 class CandidateReleaseAdmin(admin.ModelAdmin):
-    list_display = ['batch', 'title', 'spotify_uri', 'sorting_hat_rank', 'sorting_hat_track_num']
+    list_display = ['title', 'spotify_uri', 'sorting_hat_rank', 'sorting_hat_track_num', 'batch']
     list_filter = ['batch', 'processed', 'eligible', 'genres']
     ordering = ['batch', 'sorting_hat_rank', 'processed', 'title']
     actions = ['process_album']
 
     @staticmethod
     def handle_album_list(sp, query_list):
+        track_list = []
         album_dets_list = sp.albums(query_list)
         for album_dets in album_dets_list[u'albums']:
             if album_dets is None:
                 print('Unable to retrieve information on one of the provided albums.')
                 continue
             album = CandidateRelease.objects.get(spotify_uri=album_dets[u'uri'])
-            album.process(sp, album_dets)
+            track_list += album.process(sp, album_dets)
+        CandidateTrack.objects.bulk_create(track_list)
         return
 
     def process_album(self, request, queryset):
