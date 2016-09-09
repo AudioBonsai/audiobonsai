@@ -1,5 +1,6 @@
 from audiobonsai import settings
 from django.http import HttpResponse, HttpResponseRedirect
+import json
 from spotify_helper.models import SpotifyUser
 from spotipy import oauth2
 
@@ -40,8 +41,13 @@ def spotify_request_token(request):
 
     if auth_user.spotify_token is None or len(auth_user.spotify_token) == 0:
         return HttpResponseRedirect(sp_oauth.get_authorize_url())
-    elif sp_oauth._is_token_expired(auth_user.spotify_token):
-        auth_user.spotify_token = sp_oauth._refresh_access_token(auth_user.spotify_token)
+    token_info = json.loads(auth_user.spotify_token.replace('\'', '"'))
+    if token_info is None or len(token_info) == 0:
+        return HttpResponseRedirect(sp_oauth.get_authorize_url())
+    elif sp_oauth._is_token_expired(token_info):
+        auth_user.spotify_token = ''
+        auth_user.save()
+        HttpResponseRedirect(sp_oauth.get_authorize_url())
 
     if return_path is None or len(return_path) == 0:
         # Not sure how we got here, but follow through on login

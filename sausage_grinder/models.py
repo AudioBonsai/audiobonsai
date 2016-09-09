@@ -25,19 +25,116 @@ class CandidateSet(models.Model):
 class Genre(models.Model):
     name = models.CharField(max_length=255, primary_key=True)
 
+    def __str__(self):
+        return self.name
+
 
 class CandidateArtist(models.Model):
     spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
     name = models.CharField(max_length=255, default='', blank=True)
+    popularity = models.IntegerField(default=0)
+    followers = models.IntegerField(default=0)
+    processed = models.BooleanField(default=False)
+    genres = models.ManyToManyField(Genre)
+    image_640 = models.URLField(null=True)
+    image_600 = models.URLField(null=True)
+    image_300 = models.URLField(null=True)
+    image_64 = models.URLField(null=True)
 
     def __str__(self):
         return self.name
+
+    def process(self, sp, artist_dets):
+        if self.processed:
+            return
+
+        self.popularity = artist_dets[u'popularity']
+        self.followers = artist_dets[u'followers']['total']
+        for genre in artist_dets[u'genres']:
+            try:
+                genre_obj = Genre.objects.get(name=genre)
+            except Genre.DoesNotExist:
+                genre_obj = Genre(name=genre)
+                genre_obj.save()
+            self.genres.add(genre_obj)
+        for image in artist_dets[u'images']:
+            if image[u'height'] == 640 or image[u'width'] == 640:
+                self.image_640 = image[u'url']
+            elif image[u'height'] == 600 or image[u'width'] == 600:
+                self.image_600 = image[u'url']
+            elif image[u'height'] == 300 or image[u'width'] == 300:
+                self.image_300 = image[u'url']
+            elif image[u'height'] == 64 or image[u'width'] == 64:
+                self.image_64 = image[u'url']
+
+        releases = self.candidaterelease_set.all()
+        for release in releases:
+            release.genres.add(self.genres)
+            if release.artist_popularity < self.popularity:
+                release.artist_popularity = self.popularity
+                if release.artist_popularity >= 51:
+                    release.popularity_class = 'top'
+                elif release.artist_popularity >= 26:
+                    release.popularity_class = 'verge'
+                elif release.artist_popularity >= 11:
+                    release.popularity_class = 'unheralded'
+                elif release.artist_popularity >= 1:
+                    release.popularity_class = 'underground'
+                elif release.artist_popularity == 0:
+                    release.popularity_class = 'unknown'
+            link = CandidateArtistRelease.objects.get(artist=self, release=release)
+            if link.type == 'PRIMARY':
+                self.process_album(sp, release)
+            release.save()
+
+        self.processed = True
+        self.save()
+
+    def process_album(self, sp, release):
+        artist_singles = sp.artist_albums(self.spotify_uri, album_type='single', country='US')
+        single_uris = []
+        for single in artist_singles[u'items']:
+            if single[u'uri'] == release.spotify_uri:
+                continue
+            single_uris.append(single[u'uri'])
+
+        if len(single_uris) > 0:
+            single_dets = sp.albums(single_uris)
+
+            for single in single_dets[u'albums']:
+                try:
+                    release_date = datetime.strptime(single[u'release_date'], '%Y-%m-%d').date()
+                except:
+                    continue
+                if release.week.week_date - release_date > timedelta(days=120):
+                    continue
+                try:
+                    release_track = release.candidatetrack_set.get(title=single[u'name'])
+                    #for release_track in release_tracks:
+                    release_track.single_release_date = release_date
+                    release_track.save()
+                except CandidateTrack.DoesNotExist:
+                    # None Found
+                    for single_track in single[u'tracks'][u'items']:
+                       try:
+                            release_track = release.candidatetrack_set.get(title=single_track[u'name'])
+                            #for release_track in release_tracks:
+                            release_track.single_release_date = release_date
+                            release_track.save()
+                       except CandidateTrack.DoesNotExist:
+                           # No matches
+                            pass
 
 
 class CandidateRelease(models.Model):
     sorting_hat_track_num = models.IntegerField(default=0)
     sorting_hat_rank = models.IntegerField(default=0)
     popularity = models.IntegerField(default=0)
+    artist_popularity = models.IntegerField(default=0)
+    popularity_class = models.CharField(max_length=255, default='',
+                                        choices=(('top', 'Top 50'), ('verge', 'On the Verge'),
+                                                 ('unheralded', 'Unheralded'), ('underground', 'Underground'),
+                                                 ('unknown', 'Unknown')))
     eligible = models.BooleanField(default=True)
     processed = models.BooleanField(default=False)
     spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
@@ -49,6 +146,7 @@ class CandidateRelease(models.Model):
     release_date = models.DateField(auto_now=False, auto_now_add=False, null=True)
     title = models.CharField(max_length=255, default='', blank=True)
     image_640 = models.URLField(null=True)
+    image_600 = models.URLField(null=True)
     image_300 = models.URLField(null=True)
     image_64 = models.URLField(null=True)
 
@@ -90,7 +188,11 @@ class CandidateRelease(models.Model):
         if self.processed:
             return track_list
 
-        self.release_date = datetime.strptime(album_dets[u'release_date'], '%Y-%m-%d').date()
+        try:
+            self.release_date = datetime.strptime(album_dets[u'release_date'], '%Y-%m-%d').date()
+        except:
+            self.mark_ineligible()
+            return track_list
         self.title = album_dets[u'name']
         if not self.check_eligility(album_dets):
             return track_list
@@ -113,6 +215,8 @@ class CandidateRelease(models.Model):
         for image in album_dets[u'images']:
             if image[u'height'] == 640 or image[u'width'] == 640:
                 self.image_640 = image[u'url']
+            elif image[u'height'] == 600 or image[u'width'] == 600:
+                self.image_600 = image[u'url']
             elif image[u'height'] == 300 or image[u'width'] == 300:
                 self.image_300 = image[u'url']
             elif image[u'height'] == 64 or image[u'width'] == 64:
@@ -140,6 +244,7 @@ class CandidateTrack(models.Model):
     duration = models.IntegerField(default=0)
     track_number = models.IntegerField(default=0)
     disc_number = models.IntegerField(default=0)
+    single_release_date = models.DateField(auto_now=False, auto_now_add=False, null=True)
 
     def __str__(self):
         if len(self.title) == 0:
