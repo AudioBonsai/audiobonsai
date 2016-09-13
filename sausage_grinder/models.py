@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, IntegrityError
 from django.utils import timezone
 from datetime import datetime, timedelta
 from pprint import pprint
@@ -24,6 +24,7 @@ class CandidateSet(models.Model):
 
 class Genre(models.Model):
     name = models.CharField(max_length=255, primary_key=True)
+    week = models.ForeignKey(CandidateSet, on_delete=models.CASCADE)
 
     def __str__(self):
         return self.name
@@ -31,6 +32,7 @@ class Genre(models.Model):
 
 class CandidateArtist(models.Model):
     spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
+    week = models.ForeignKey(CandidateSet, on_delete=models.CASCADE)
     name = models.CharField(max_length=255, default='', blank=True)
     popularity = models.IntegerField(default=0)
     followers = models.IntegerField(default=0)
@@ -54,7 +56,7 @@ class CandidateArtist(models.Model):
             try:
                 genre_obj = Genre.objects.get(name=genre)
             except Genre.DoesNotExist:
-                genre_obj = Genre(name=genre)
+                genre_obj = Genre(name=genre, week=self.week)
                 genre_obj.save()
             self.genres.add(genre_obj)
         for image in artist_dets[u'images']:
@@ -69,7 +71,8 @@ class CandidateArtist(models.Model):
 
         releases = self.candidaterelease_set.all()
         for release in releases:
-            release.genres.add(self.genres)
+            for genre in self.genres.all():
+                release.genres.add(genre)
             if release.artist_popularity < self.popularity:
                 release.artist_popularity = self.popularity
                 if release.artist_popularity >= 51:
@@ -80,7 +83,7 @@ class CandidateArtist(models.Model):
                     release.popularity_class = 'unheralded'
                 elif release.artist_popularity >= 1:
                     release.popularity_class = 'underground'
-                elif release.artist_popularity == 0:
+                else:
                     release.popularity_class = 'unknown'
             link = CandidateArtistRelease.objects.get(artist=self, release=release)
             if link.type == 'PRIMARY':
@@ -109,18 +112,22 @@ class CandidateArtist(models.Model):
                 if release.week.week_date - release_date > timedelta(days=120):
                     continue
                 try:
-                    release_track = release.candidatetrack_set.get(title=single[u'name'])
-                    #for release_track in release_tracks:
-                    release_track.single_release_date = release_date
-                    release_track.save()
+                    release_tracks = release.candidatetrack_set.filter(title=single[u'name'])
+                    for release_track in release_tracks:
+                        release_track.single_release_date = release_date
+                        release_track.save()
+                        release.has_single = True
+                        release.save()
                 except CandidateTrack.DoesNotExist:
                     # None Found
                     for single_track in single[u'tracks'][u'items']:
                        try:
-                            release_track = release.candidatetrack_set.get(title=single_track[u'name'])
-                            #for release_track in release_tracks:
-                            release_track.single_release_date = release_date
-                            release_track.save()
+                            release_tracks = release.candidatetrack_set.filter(title=single_track[u'name'])
+                            for release_track in release_tracks:
+                                release_track.single_release_date = release_date
+                                release_track.save()
+                                release.has_single = True
+                                release.save()
                        except CandidateTrack.DoesNotExist:
                            # No matches
                             pass
@@ -137,6 +144,7 @@ class CandidateRelease(models.Model):
                                                  ('unknown', 'Unknown')))
     eligible = models.BooleanField(default=True)
     processed = models.BooleanField(default=False)
+    has_single = models.BooleanField(default=False)
     spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
     batch = models.IntegerField(default=0)
     week = models.ForeignKey(CandidateSet, on_delete=models.CASCADE)
@@ -202,14 +210,14 @@ class CandidateRelease(models.Model):
             try:
                 artist_obj = CandidateArtist.objects.get(spotify_uri=artist[u'uri'])
             except CandidateArtist.DoesNotExist:
-                artist_obj = CandidateArtist(spotify_uri=artist[u'uri'], name=artist[u'name'])
+                artist_obj = CandidateArtist(spotify_uri=artist[u'uri'], week=self.week, name=artist[u'name'])
                 artist_obj.save()
             CandidateArtistRelease.objects.create(artist=artist_obj, release=self)
         for genre in album_dets[u'genres']:
             try:
                 genre_obj = Genre.object.get(name=genre)
             except Genre.DoesNotExist:
-                genre_obj = Genre(name=genre)
+                genre_obj = Genre(name=genre, week=self.week)
                 genre_obj.save()
             self.genres.add(genre_obj)
         for image in album_dets[u'images']:
@@ -263,7 +271,7 @@ class CandidateTrack(models.Model):
             try:
                 artist_obj = CandidateArtist.objects.get(spotify_uri=artist[u'uri'])
             except CandidateArtist.DoesNotExist:
-                artist_obj = CandidateArtist(spotify_uri=artist[u'uri'], name=artist[u'name'])
+                artist_obj = CandidateArtist(spotify_uri=artist[u'uri'], week=release.week, name=artist[u'name'])
                 artist_obj.save()
             if artist_obj not in release.artists.all():
                 CandidateArtistRelease.objects.create(artist=artist_obj, release=release, type='FEATURED')
