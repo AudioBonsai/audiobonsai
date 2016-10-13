@@ -15,12 +15,16 @@ Including another URLconf
 """
 from django.conf.urls import url
 from django.contrib import admin
-from spotify_helper.views import spotify_login, spotify_request_token, spotify_ask_user, spotify_confirm_access
+import sausage_grinder.views as sg
+import spotify_helper.views as sh
 
 urlpatterns = [
+    url(r'^sausage_grinder/', sg.sausage_grinder_index),
     url(r'^admin/', admin.site.urls),
-    url(r'^spotify/ask_user', spotify_ask_user),
-    url(r'^spotify/request_token', spotify_request_token),
-    url(r'^spotify/login', spotify_login),
-    url(r'^spotify/confirm_access', spotify_confirm_access),
+    url(r'^spotify/ask_user', sh.spotify_ask_user),
+    url(r'^spotify/request_token', sh.spotify_request_token),
+    url(r'^spotify/login', sh.spotify_login),
+    url(r'^spotify/confirm_access', sh.spotify_confirm_access),
+    url(r'^spotify/expire_token', sh.expire_token),
+    url(r'^spotify/test_conn', sh.test_conn),
 ]

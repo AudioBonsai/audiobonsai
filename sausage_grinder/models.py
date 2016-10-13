@@ -31,7 +31,7 @@ class Genre(models.Model):
 
 
 class CandidateArtist(models.Model):
-    spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
+    spotify_uri = models.CharField(max_length=255, default='')
     week = models.ForeignKey(CandidateSet, on_delete=models.CASCADE)
     name = models.CharField(max_length=255, default='', blank=True)
     popularity = models.IntegerField(default=0)
@@ -107,7 +107,7 @@ class CandidateArtist(models.Model):
             for single in single_dets[u'albums']:
                 try:
                     release_date = datetime.strptime(single[u'release_date'], '%Y-%m-%d').date()
-                except:
+                except ValueError:
                     continue
                 if release.week.week_date - release_date > timedelta(days=120):
                     continue
@@ -145,7 +145,7 @@ class CandidateRelease(models.Model):
     eligible = models.BooleanField(default=True)
     processed = models.BooleanField(default=False)
     has_single = models.BooleanField(default=False)
-    spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
+    spotify_uri = models.CharField(max_length=255, default='')
     batch = models.IntegerField(default=0)
     week = models.ForeignKey(CandidateSet, on_delete=models.CASCADE)
     genres = models.ManyToManyField(Genre)
@@ -198,7 +198,7 @@ class CandidateRelease(models.Model):
 
         try:
             self.release_date = datetime.strptime(album_dets[u'release_date'], '%Y-%m-%d').date()
-        except:
+        except ValueError:
             self.mark_ineligible()
             return track_list
         self.title = album_dets[u'name']
@@ -246,7 +246,7 @@ class CandidateArtistRelease(models.Model):
 
 
 class CandidateTrack(models.Model):
-    spotify_uri = models.CharField(max_length=255, default='', primary_key=True)
+    spotify_uri = models.CharField(max_length=255, default='')
     title = models.CharField(max_length=255, default='', blank=True)
     release = models.ForeignKey(CandidateRelease, on_delete=models.CASCADE)
     duration = models.IntegerField(default=0)
