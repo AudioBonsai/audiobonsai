@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from audiobonsai import settings
 from sausage_grinder.models import CandidateSet, CandidateRelease, Genre, CandidateTrack, CandidateArtist
+from spotipy import SpotifyException
 from spotify_helper.helpers import get_spotify_conn
 
 
@@ -147,25 +148,28 @@ class CandidateSetAdmin(admin.ModelAdmin):
             self.message_user(request, '{0:d} releases processed to {1}'.format(len(candidate_list), week))
             print('{0:d} candidate releases'.format(len(candidate_list)))
 
-        self.message_user(request, '{}: handle_albums'.format(datetime.now()))
-        handle_albums(sp)
-        self.message_user(request, '{}: delete_ineligible_releases'.format(datetime.now()))
-        delete_ineligible_releases()
-        print('{0:d} candidate releases eligible'.format((len(CandidateRelease.objects.all()))))
-        self.message_user(request, '{0:d} releases eligible to {1}'.format(len(CandidateRelease.objects.all()), week))
-        print('{0:d} candidate artists'.format((len(CandidateArtist.objects.all()))))
-        self.message_user(request, '{}: delete_artists_with_no_release'.format(datetime.now()))
-        delete_artists_with_no_release()
-        self.message_user(request, '{}: handle_artists'.format(datetime.now()))
-        handle_artists(sp)
-        print('{0:d} candidate artists with a release'.format((len(CandidateArtist.objects.all()))))
-        self.message_user(request, '{0:d} aritists added to {1}'.format(len(CandidateArtist.objects.all()), week))
-        print('{0:d} genres'.format((len(Genre.objects.all()))))
-        self.message_user(request, '{}: delete_empty_genres'.format(datetime.now()))
-        delete_empty_genres()
-        print('{0:d} genres with a release or artist'.format((len(Genre.objects.all()))))
-        self.message_user(request, '{0:d} genres added to {1}'.format(len(Genre.objects.all()), week))
-        self.message_user(request, '{}: done'.format(datetime.now()))
+        try:
+            self.message_user(request, '{}: handle_albums'.format(datetime.now()))
+            handle_albums(sp)
+            self.message_user(request, '{}: delete_ineligible_releases'.format(datetime.now()))
+            delete_ineligible_releases()
+            print('{0:d} candidate releases eligible'.format((len(CandidateRelease.objects.all()))))
+            self.message_user(request, '{0:d} releases eligible to {1}'.format(len(CandidateRelease.objects.all()), week))
+            print('{0:d} candidate artists'.format((len(CandidateArtist.objects.all()))))
+            self.message_user(request, '{}: delete_artists_with_no_release'.format(datetime.now()))
+            delete_artists_with_no_release()
+            self.message_user(request, '{}: handle_artists'.format(datetime.now()))
+            handle_artists(sp)
+            print('{0:d} candidate artists with a release'.format((len(CandidateArtist.objects.all()))))
+            self.message_user(request, '{0:d} aritists added to {1}'.format(len(CandidateArtist.objects.all()), week))
+            print('{0:d} genres'.format((len(Genre.objects.all()))))
+            self.message_user(request, '{}: delete_empty_genres'.format(datetime.now()))
+            delete_empty_genres()
+            print('{0:d} genres with a release or artist'.format((len(Genre.objects.all()))))
+            self.message_user(request, '{0:d} genres added to {1}'.format(len(Genre.objects.all()), week))
+            self.message_user(request, '{}: done'.format(datetime.now()))
+        except SpotifyException:
+            self.parse_sorting_hat(request, queryset)
         return
 
 

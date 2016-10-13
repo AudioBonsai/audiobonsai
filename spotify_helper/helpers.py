@@ -29,6 +29,8 @@ def get_spotify_conn(request):
         sp_oauth = get_spotipy_oauth(request.get_host())
         if sp_oauth._is_token_expired(token_info):
             token_info = sp_oauth._refresh_access_token(token_info['refresh_token'])
+            auth_user.spotify_token = token_info
+            auth_user.save()
 
     return spotipy.Spotify(auth=token_info['access_token'])
 
