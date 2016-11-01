@@ -33,6 +33,7 @@ def spotify_request_token(request):
         return HttpResponseRedirect(sp_oauth.get_authorize_url())
     elif sp_oauth._is_token_expired(token_info):
         token_info = sp_oauth._refresh_access_token(token_info['refresh_token'])
+        print('Saving spotify_token as type {} from spotify_request_token'.format(type(token_info)))
         auth_user.spotify_token = token_info
         auth_user.save()
 
@@ -49,6 +50,7 @@ def spotify_login(request):
 
     try:
         auth_user = request.user.spotifyuser
+        print('Saving spotify_token as type {} from spotify_login'.format(type(token_info)))
         auth_user.spotify_token = token_info
         auth_user.save()
     except:
@@ -74,6 +76,7 @@ def expire_token(request):
     auth_user = request.user.spotifyuser
     token_info = json.loads(auth_user.spotify_token.replace('\'', '"'))
     token_info['expires_at'] = token_info['expires_at'] - 15000
+    print('Saving spotify_token as type {} from expire_token'.format(type(token_info)))
     auth_user.spotify_token = token_info
     auth_user.save()
     sp_oauth = oauth2.SpotifyOAuth(settings.SPOTIPY_CLIENT_ID,

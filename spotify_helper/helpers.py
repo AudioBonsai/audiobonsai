@@ -12,6 +12,7 @@ def get_spotify_conn(request):
         auth_user = request.user.spotifyuser
         auth_user.return_path = return_path
         auth_user.save()
+        return get_user_conn(auth_user, request.get_host())
     except:
         print('USER EXCEPTION. DAFUQ?')
         auth_user = SpotifyUser(user=request.user, return_path=return_path)
@@ -19,16 +20,21 @@ def get_spotify_conn(request):
         return HttpResponseRedirect(
             'http://' + request.get_host() + '/spotify/ask_user')
 
+
+def get_user_conn(auth_user, host):
     if auth_user.spotify_token is None or len(auth_user.spotify_token) == 0:
         return HttpResponseRedirect(
-            'http://' + request.get_host() + '/spotify/ask_user')
+            'http://' + host + '/spotify/ask_user')
 
     token_info = None
     if len(auth_user.spotify_token) > 0:
-        token_info = json.loads(auth_user.spotify_token.replace('\'', '"'))
-        sp_oauth = get_spotipy_oauth(request.get_host())
+        print(type(auth_user.spotify_token))
+        print(auth_user.spotify_token)
+        token_info = json.loads(auth_user.spotify_token.__str__().replace('\'', '"'))
+        sp_oauth = get_spotipy_oauth(host)
         if sp_oauth._is_token_expired(token_info):
             token_info = sp_oauth._refresh_access_token(token_info['refresh_token'])
+            print('Saving spotify_token as type {} from get_user_conn'.format(type(token_info)))
             auth_user.spotify_token = token_info
             auth_user.save()
 

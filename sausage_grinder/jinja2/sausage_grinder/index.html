@@ -1,8 +1,8 @@
-<html>
-<head>
-    <title>Sausage Grinder</title>
-</head>
-<body>
+{% extends "sausage_grinder/base.html" %}
+{% block title %}Sausage Grinder{% endblock %}
+
+{% block content %}
+<div>
     Total releases: {{ release_count }}<br/>
     Releases processed: {{ processed_releases }}<br/>
     Eligible releases: {{ eligible_releases }}<br/>
@@ -10,5 +10,5 @@
     Total artist: {{ artist_count }}<br/>
     Artist processed: {{ processed_artists }}<br/>
     Total genres: {{ genre_count }}<br/>
-</body>
-</html>
+</div>
+{% endblock %}
