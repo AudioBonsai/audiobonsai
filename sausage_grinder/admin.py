@@ -110,7 +110,12 @@ class ArtistAdmin(admin.ModelAdmin):
 class ReleaseSetAdmin(admin.ModelAdmin):
     list_display = ['week_date', 'sampler_uri']
     ordering = ['week_date']
-    actions = ['parse_sorting_hat', 'load_samples', 'delete_ineligible_releases']
+    actions = ['parse_sorting_hat', 'load_samples', 'delete_ineligible_releases', 'determine_popularities']
+
+
+    def determine_popularities(self, request, queryset):
+        for week in queryset:
+            week.determine_popularities()
 
     def delete_ineligible_releases(self):
         ineligible_list = Release.objects.filter(eligible=False, week=self)
@@ -149,12 +154,11 @@ class ReleaseSetAdmin(admin.ModelAdmin):
             offset += output[u'limit']
             list_count = output[u'total']
         #self.message_user(request, '{}: {}'.format(datetime.now(), output))
-        #pprint(output)
-        #print('{0:d} FC lists found'.format(len(fc_lists)))
-        #for fc_date in fc_lists.keys():
-        #    print('{} Loading {}'.format(datetime.now(), fc_date.strftime('%Y-%m-%d')))
-        #    self.load_sampler(request, fc_date, fc_lists[fc_date])
-        #    break
+        print('{0:d} FC lists found'.format(len(fc_lists)))
+        for fc_date in fc_lists.keys():
+            print('{} Loading {}'.format(datetime.now(), fc_date.strftime('%Y-%m-%d')))
+            self.load_sampler(request, fc_date, fc_lists[fc_date])
+            break
 
         for recommender in top_ten_lists.keys():
             for list in top_ten_lists[recommender]:
@@ -247,7 +251,8 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     print('FOUND TWO VERSIONS OF THE ALBUM: {}'.format(album))
 
                 if track_obj is not None and release is not None:
-                    Recommendation(type=recommender, release=release, track=track_obj)
+                    rec = Recommendation(type=recommender, release=release, track=track_obj)
+                    rec.save()
 
     def parse_sorting_hat(self, request, queryset):
         self.message_user(request, '{}: parse_sorting_hat'.format(datetime.now()))

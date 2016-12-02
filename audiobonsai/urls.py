@@ -19,7 +19,6 @@ import sausage_grinder.views as sg
 import spotify_helper.views as sh
 
 urlpatterns = [
-    url(r'^sausage_grinder/', sg.sausage_grinder_index),
     url(r'^admin/', admin.site.urls),
     url(r'^spotify/ask_user', sh.spotify_ask_user),
     url(r'^spotify/request_token', sh.spotify_request_token),
@@ -27,4 +26,9 @@ urlpatterns = [
     url(r'^spotify/confirm_access', sh.spotify_confirm_access),
     url(r'^spotify/expire_token', sh.expire_token),
     url(r'^spotify/test_conn', sh.test_conn),
+    url(r'^artist', sg.artist),
+    url(r'^release', sg.release),
+    url(r'^track', sg.track),
+    url(r'^week', sg.week),
+    url(r'^', sg.sausage_grinder_index),
 ]

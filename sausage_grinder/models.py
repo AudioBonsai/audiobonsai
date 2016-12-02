@@ -16,6 +16,10 @@ class ReleaseSet(models.Model):
     week_date = models.DateField(auto_now=False, auto_now_add=False, default=timezone.now)
     sampler_uri = models.CharField(max_length=255, default='', blank=True)
 
+    def determine_popularities(self):
+        for release in Release.objects.filter(week=self.id):
+            release.determine_popularity()
+
     def __str__(self):
         return self.week_date.strftime('%c')
 
@@ -72,18 +76,7 @@ class Artist(models.Model):
         for release in releases:
             for genre in self.genres.all():
                 release.genres.add(genre)
-            if release.artist_popularity < self.popularity:
-                release.artist_popularity = self.popularity
-                if release.artist_popularity >= 51:
-                    release.popularity_class = 'top'
-                elif release.artist_popularity >= 26:
-                    release.popularity_class = 'verge'
-                elif release.artist_popularity >= 11:
-                    release.popularity_class = 'unheralded'
-                elif release.artist_popularity >= 1:
-                    release.popularity_class = 'underground'
-                else:
-                    release.popularity_class = 'unknown'
+
             link = ArtistRelease.objects.get(artist=self, release=release)
             if link.type == 'PRIMARY':
                 self.process_album(sp, release)
@@ -159,6 +152,20 @@ class Release(models.Model):
     image_300 = models.URLField(null=True)
     image_64 = models.URLField(null=True)
 
+    def artist_list(self, type='PRIMARY'):
+        artistrelease_list = ArtistRelease.objects.filter(release=self, type=type)
+        if len(artistrelease_list) == 0:
+            return ''
+        formatted_list = ['<a href="artist?id={}">{}</a>'.format(artistrelease.id, artistrelease.artist) for artistrelease in artistrelease_list]
+        if len(formatted_list) > 1:
+            formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and', formatted_list[-1]])
+        else:
+            formatted_string = formatted_list[0]
+        return formatted_string
+
+    def recommendation_list(self):
+        return Recommendation.objects.filter(release=self)
+
     def __str__(self):
         if len(self.title) == 0:
             return '{0} Rank:{1:6d}, Tracks:{2:2d}'.format(self.spotify_uri, self.sorting_hat_rank,
@@ -191,6 +198,26 @@ class Release(models.Model):
                 self.mark_ineligible()
                 return (False, None)
         return True
+
+
+    def determine_popularity(self):
+        artist_links = ArtistRelease.objects.filter(release_id=self.id, type='PRIMARY')
+        self.artist_popularity = 0
+        for link in artist_links:
+            artist = Artist.objects.get(id=link.artist_id)
+            if artist.popularity > self.artist_popularity:
+                self.artist_popularity = artist.popularity
+        self.popularity_class = 'unknown'
+        self.artist_popularity = self.popularity
+        if self.artist_popularity >= 51:
+            self.popularity_class = 'top'
+        elif self.artist_popularity >= 26:
+            self.popularity_class = 'verge'
+        elif self.artist_popularity >= 11:
+            self.popularity_class = 'unheralded'
+        elif self.artist_popularity >= 1:
+            self.popularity_class = 'underground'
+        self.save()
 
     def process(self, sp, album_dets):
         track_list = []

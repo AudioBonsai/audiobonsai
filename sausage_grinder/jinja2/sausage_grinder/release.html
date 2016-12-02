@@ -1,0 +1,48 @@
+{% extends "sausage_grinder/base.html" %}
+{% block title %}{{ release.title }}{% endblock %}
+
+{% block content %}
+<div style="width:64px;height:64px;margin-left:5px;margin-right:5px;float:left">
+        {% if release.image_64 is not none %}
+        <img src="{{ release.image_64 }}"/>
+        {% endif %}
+        </div>
+        <div class="album"><a href="release?id={{ release.id }}">{{ release.title }}</a></div>
+        <div class="artist">
+            {% set artist_list = release.artist_list() %}
+            {% if artist_list|length > 0 %}
+                by {% for artist in artist_list %}
+                <a href="artist?id={{ artist.id }}">{{ artist.name }}</a>
+                {% endfor %}
+            {% else %}
+                by Various Arists
+            {% endif %}
+            {% set featured_list = release.artist_list('FEATURED') %}
+            {% if featured_list|length > 0 %}
+                featuring {% for artist in featured_list %}
+                <a href="artist?id{{ artist.id }}">{{ artist.name }}</a>
+                {% endfor %}
+            {% endif %}
+        </div>
+        <div class="genres">
+            {% for genre in release.genres.all() %}
+                <a href="genre?id={{ genre.name|urlencode() }}">{{ genre.name }}</a>
+            {% endfor %}
+        </div>
+        {% set recommendation_list = release.recommendation_list() %}
+        {% if recommendation_list|length > 0 %}
+            recommended by
+            {% for recommendation in recommendation_list %}
+                {{ recommendation.type }}
+            {% endfor %}
+            <br/>
+        {% endif %}
+
+
+        {{ release.get_popularity_class_display() }}<br/>
+        {% if release.is_sample %}
+        In Sampler<br/>
+        {% endif %}
+
+<iframe src="https://embed.spotify.com/?uri={{ release.spotify_uri|urlencode }}" width="300" height="380" frameborder="0" allowtransparency="true"></iframe>
+{% endblock %}
