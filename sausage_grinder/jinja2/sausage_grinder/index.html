@@ -2,17 +2,6 @@
 {% block title %}Sausage Grinder{% endblock %}
 
 {% block content %}
-<div>
-    Total releases: {{ release_count }}<br/>
-    Releases processed: {{ processed_releases }}<br/>
-    Eligible releases: {{ eligible_releases }}<br/>
-    Ineligible releases: {{ ineligible_releases }}<br/>
-    Total artist: {{ artist_count }}<br/>
-    Artist processed: {{ processed_artists }}<br/>
-    Total genres: {{ genre_count }}<br/>
-</div>
-
-<p>
 <div id="fresh_cuts">
 {% for week in weeks %}
     <div><a href="week?id={{ week.week_date }}">{{ week.week_date }}</a></div>
@@ -34,5 +23,4 @@
         {% endif %}
     </span>
 </div>
-</p>
 {% endblock %}
