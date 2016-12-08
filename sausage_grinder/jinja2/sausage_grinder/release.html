@@ -11,17 +11,13 @@
         <div class="artist">
             {% set artist_list = release.artist_list() %}
             {% if artist_list|length > 0 %}
-                by {% for artist in artist_list %}
-                <a href="artist?id={{ artist.id }}">{{ artist.name }}</a>
-                {% endfor %}
+                by {{ artist_list|safe }}
             {% else %}
                 by Various Arists
             {% endif %}
             {% set featured_list = release.artist_list('FEATURED') %}
             {% if featured_list|length > 0 %}
-                featuring {% for artist in featured_list %}
-                <a href="artist?id{{ artist.id }}">{{ artist.name }}</a>
-                {% endfor %}
+                featuring {{ featured_list|safe }}
             {% endif %}
         </div>
         <div class="genres">

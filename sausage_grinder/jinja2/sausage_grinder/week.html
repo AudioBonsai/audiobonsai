@@ -2,11 +2,11 @@
 {% block title %}{{ week.week_date }}{% endblock %}
 
 {% block content %}
-<h1>{{ week.week_date }}</h1>
+<div class='title'>{{ week.week_date }}</div>
 {% for release in releases %}
 <div class="release_list_item" style="width:100%">
     {% if release.is_freshcut %}
-    <div style="background-color:#dded9e;">
+    <div class="freshcut">
     {% endif %}
         <div style="width:84px;height:84px;margin-left:5px;margin-right:5px;float:left">
         {% if release.image_64 is not none %}

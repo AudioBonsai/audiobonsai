@@ -2,22 +2,42 @@ div {
   font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif
 }
 
+div.title {
+  font-size: 54px;
+  color: #556516;
+  text-align: center;
+  font-family: Impact, Charcoal, sans-serif;
+  padding-bottom: 10px;
+}
+
+div.freshcut {
+  background-color:#eeeeee;
+  margin-right: 5px;
+  padding-right: 5px;
+}
+
 a:link {
-  color:#bbcb7c;
+  color:#778738;
 }
 
 a:hover {
   color:#eefeaf;
-  background-color: #557538;
+  background-color: #556516;
 }
 
 a:visited {
-  color:#777777;
+  color:#623e22;
 }
 
 #sidebar {
   float: right;
   background: #eeeeee;
+  border-left: #cccccc;
+  border-left-width: 1px;
+  border-left-style: solid;
+  border-bottom: #cccccc;
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
   width: 300px;
   padding: 5px;
 
