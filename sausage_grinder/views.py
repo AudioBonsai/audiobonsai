@@ -47,7 +47,14 @@ def week(request):
 
 
 def artist(request):
-    context = {}
+    artist_id = request.GET.get('id')
+    try:
+        artist = Artist.objects.get(id=artist_id)
+    except Artist.DoesNotExist:
+        return HttpResponse('Well fuuuuuuuck.')
+    context = {
+        'artist': artist
+    }
     template = loader.get_template('sausage_grinder/artist.html')
     return HttpResponse(template.render(context, request))
 

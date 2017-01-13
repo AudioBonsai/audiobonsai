@@ -1,3 +1,5 @@
+{% import 'sausage_grinder/list_item_macros.html' as list_macros %}
+
 {% extends "sausage_grinder/base.html" %}
 {% block title %}{{ release.title }}{% endblock %}
 
@@ -34,11 +36,13 @@
             <br/>
         {% endif %}
 
-
+        Artist Popularity: {{ release.artist_popularity }}<br/>
+        Popularity: {{ release.popularity }}<br/>
+        Popularity Class: {{ release.popularity_class }}<br/>
         {{ release.get_popularity_class_display() }}<br/>
-        {% if release.is_sample %}
-        In Sampler<br/>
-        {% endif %}
+        <a href="week?id={{ release.week.week_date|urlencode() }}">{{ release.week.week_date }}</a><br/><br/>
 
-<iframe src="https://embed.spotify.com/?uri={{ release.spotify_uri|urlencode }}" width="300" height="380" frameborder="0" allowtransparency="true"></iframe>
+        {% for track in release.track_list() %}
+            {{ list_macros.track_list_item(track) }}
+        {% endfor %}
 {% endblock %}

@@ -12,7 +12,7 @@ from spotify_helper.helpers import get_spotify_conn
 # Register your models here.
 
 
-def handle_album_list(sp, query_list):
+def handle_album_list(sp, query_list, all_eligible=False):
     track_list = []
     album_dets_list = sp.albums(query_list)
     if album_dets_list is None:
@@ -26,17 +26,17 @@ def handle_album_list(sp, query_list):
         except Release.MultipleObjectsReturned:
             print('Repeat album? {}, SKIPPING'.format(album_dets[u'uri']))
             continue
-        track_list += album.process(sp, album_dets)
+        track_list += album.process(sp, album_dets, all_eligible)
     Track.objects.bulk_create(track_list)
     return
 
 
-def handle_albums(sp):
-    candidate_list = Release.objects.filter(processed=False)
+def handle_albums(sp, release_set, all_eligible=False):
+    candidate_list = Release.objects.filter(processed=False, week=release_set)
     offset = 0
     while offset < len(candidate_list):
         sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
-        handle_album_list(sp, sp_uri_list)
+        handle_album_list(sp, sp_uri_list, all_eligible)
         offset += 20
 
 
@@ -124,6 +124,8 @@ class ReleaseSetAdmin(admin.ModelAdmin):
         offset = 0
         list_count = 500
         sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            return sp
         while(offset < list_count):
             output = sp.user_playlists(sp.current_user()[u'id'], offset=offset)
             print('offset:{} limit:{} total:{}'.format(output[u'offset'],
@@ -173,6 +175,8 @@ class ReleaseSetAdmin(admin.ModelAdmin):
 
     def load_sampler(self, request, release_set):
         sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            return sp
         offset = 0
         list_count = 500
         albums = {}
@@ -201,8 +205,9 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                 candidate.is_sample = True
 
         Release.objects.bulk_create(albums.values())
-        handle_albums(sp)
+        handle_albums(sp, release_set, True)
         handle_artists(sp)
+        release_set.determine_popularities()
 
         for track in tracks:
             try:
@@ -229,8 +234,11 @@ class ReleaseSetAdmin(admin.ModelAdmin):
     def load_recommendation_list(self, request, release_set, list_uri,
                                  recommender):
         sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            return sp
         offset = 0
         list_count = 500
+        pos = 0
         while (offset < list_count):
             output = sp.user_playlist_tracks(sp.current_user()[u'id'],
                                              list_uri, offset=offset)
@@ -238,6 +246,7 @@ class ReleaseSetAdmin(admin.ModelAdmin):
             offset += output[u'limit']
             list_count = output[u'total']
             for item in output[u'items']:
+                pos += 1
                 track = item[u'track']
                 album = track[u'album'][u'uri']
                 try:
@@ -262,7 +271,8 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     print('FOUND TWO VERSIONS OF THE ALBUM: {}'.format(album))
 
                 if track_obj is not None and release is not None:
-                    rec = Recommendation(type=recommender, release=release, track=track_obj)
+                    rec = Recommendation(type=recommender, release=release,
+                                         track=track_obj, position=pos)
                     rec.save()
 
     def parse_sorting_hat(self, request, queryset):
@@ -304,7 +314,7 @@ class ReleaseSetAdmin(admin.ModelAdmin):
 
         try:
             self.message_user(request, '{}: handle_albums'.format(datetime.now()))
-            handle_albums(sp)
+            handle_albums(sp, week)
             self.message_user(request, '{}: delete_ineligible_releases'.format(datetime.now()))
             week.delete_ineligible_releases()
             print('{0:d} candidate releases eligible'.format((len(Release.objects.all()))))
@@ -343,9 +353,9 @@ class ReleaseAdmin(admin.ModelAdmin):
             if len(query_list) < 20:
                 query_list.append(album.spotify_uri)
             else:
-                self.handle_album_list(sp, query_list)
+                handle_album_list(sp, query_list)
                 query_list = [album.spotify_uri]
-        self.handle_album_list(sp, query_list)
+        handle_album_list(sp, query_list)
         return
 
 

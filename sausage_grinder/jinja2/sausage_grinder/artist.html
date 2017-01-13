@@ -1,5 +1,31 @@
 {% extends "sausage_grinder/base.html" %}
-{% block title %}{% endblock %}
-
+{% block title %}{{ artist.name }}{% endblock %}
 {% block content %}
+{% if artist.image_640 is not none %}
+<img src="{{ artist.image_640 }}"/>
+{% elif artist.image_600 is not none %}
+<img src="{{ artist.image_600 }}"/>
+{% endif %}
+{{ artist.name }}<br/>
+Spotify followers: {{ artist.followers }}<br/>
+Spotify rank: {{ artist.popularity }}<br/>
+<div class="genres">
+    {% for genre in artist.genres.all() %}
+        <a href="genre?id={{ genre.name|urlencode() }}">{{ genre.name }}</a>
+    {% endfor %}
+</div>
+
+<br/>
+<div class="release">
+    {% set release_list = artist.release_list() %}
+    {% if release_list|length > 0 %}
+        Releases:
+        {{ release_list|safe }}
+    {% endif %}
+    {% set featured_list = artist.release_list('FEATURED') %}
+    {% if featured_list|length > 0 %}
+        Featured on:
+        {{ featured_list|safe }}
+    {% endif %}
+</div>
 {% endblock %}

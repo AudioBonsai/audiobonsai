@@ -1,53 +1,11 @@
+{% import 'sausage_grinder/list_item_macros.html' as list_macros %}
+
 {% extends "sausage_grinder/base.html" %}
 {% block title %}{{ week.week_date }}{% endblock %}
 
 {% block content %}
 <div class='title'>{{ week.week_date }}</div>
 {% for release in releases %}
-<div class="release_list_item" style="width:100%">
-    {% if release.is_freshcut %}
-    <div class="freshcut">
-    {% endif %}
-        <div style="width:84px;height:84px;margin-left:5px;margin-right:5px;float:left">
-        {% if release.image_64 is not none %}
-        <img src="{{ release.image_64 }}" style="margin:10px"/>
-        {% endif %}
-        </div>
-        <div class="album"><a href="release?id={{ release.id }}">{{ release.title }}</a></div>
-        <div class="artist">
-            {% set artist_list = release.artist_list() %}
-            {% if artist_list|length > 0 %}
-                by {{ artist_list|safe }}
-            {% else %}
-                by Various Arists
-            {% endif %}
-            {% set featured_list = release.artist_list('FEATURED') %}
-            {% if featured_list|length > 0 %}
-                featuring {{ featured_list|safe }}
-            {% endif %}
-        </div>
-        <div class="genres">
-            {% for genre in release.genres.all() %}
-                <a href="genre?id={{ genre.name|urlencode() }}">{{ genre.name }}</a>
-            {% endfor %}
-        </div>
-        {% set recommendation_list = release.recommendation_list() %}
-        {% if recommendation_list|length > 0 %}
-            recommended by
-            {% for recommendation in recommendation_list %}
-                {{ recommendation.type }}
-            {% endfor %}
-        {% endif %}
-
-
-        {{ release.get_popularity_class_display() }}<br/>
-        {% if release.is_sample %}
-        In Sampler<br/>
-        {% endif %}
-
-    {% if release.is_freshcut %}
-    </div>
-    {% endif %}
-</div><br/>
+{{ list_macros.release_list_item(release) }}
 {% endfor %}
 {% endblock %}
