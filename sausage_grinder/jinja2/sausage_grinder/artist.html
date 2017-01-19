@@ -1,4 +1,5 @@
 {% extends "sausage_grinder/base.html" %}
+{% import 'sausage_grinder/list_item_macros.html' as list_macros %}
 {% block title %}{{ artist.name }}{% endblock %}
 {% block content %}
 {% if artist.image_640 is not none %}
@@ -19,13 +20,17 @@ Spotify rank: {{ artist.popularity }}<br/>
 <div class="release">
     {% set release_list = artist.release_list() %}
     {% if release_list|length > 0 %}
-        Releases:
-        {{ release_list|safe }}
+        Releases:<br/>
+        {% for release in release_list %}
+            {{ list_macros.release_list_item(release, True) }}
+        {% endfor %}
     {% endif %}
     {% set featured_list = artist.release_list('FEATURED') %}
     {% if featured_list|length > 0 %}
-        Featured on:
-        {{ featured_list|safe }}
+        <br/>Featured on:<br/>
+        {% for release in featured_list %}
+            {{ list_macros.release_list_item(release, True) }}
+        {% endfor %}
     {% endif %}
 </div>
 {% endblock %}

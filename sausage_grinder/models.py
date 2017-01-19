@@ -56,17 +56,18 @@ class Artist(models.Model):
     def release_list(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
                                                           type=type)
-        if len(artistrelease_list) == 0:
-            return ''
-        formatted_list = ['<a href="release?id={}">{}</a> from {}'.format(
-                          artistrelease.release_id, artistrelease.release, artistrelease.release.week.week_date)
-                          for artistrelease in artistrelease_list]
-        if len(formatted_list) > 1:
-            formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and',
-                                         formatted_list[-1]])
-        else:
-            formatted_string = formatted_list[0]
-        return formatted_string
+        return [artistrelease.release for artistrelease in artistrelease_list]
+        #if len(artistrelease_list) == 0:
+        #    return ''
+        #formatted_list = ['<a href="release?id={}">{}</a> from {}'.format(
+        #                  artistrelease.release_id, artistrelease.release, artistrelease.release.week.week_date)
+        #                  for artistrelease in artistrelease_list]
+        #if len(formatted_list) > 1:
+        #    formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and',
+        #                                 formatted_list[-1]])
+        #else:
+        #    formatted_string = formatted_list[0]
+        #return formatted_string
 
     def process(self, sp, artist_dets):
         if self.processed:

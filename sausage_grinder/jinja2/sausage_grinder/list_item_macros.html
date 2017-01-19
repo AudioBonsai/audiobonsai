@@ -8,7 +8,13 @@
         <img src="{{ release.image_64 }}" style="margin:10px"/>
         {% endif %}
         </div>
-        <div class="album"><a href="release?id={{ release.id }}">{{ release.title }}</a></div>
+        <div class="album"><a href="release?id={{ release.id }}">
+            {{ release.title }}</a>
+        {% if show_week %}
+         included in <a href="week?id={{ release.week.week_date|urlencode() }}">
+            {{ release.week.week_date }}</a>
+        {% endif %}
+        </div>
         <div class="artist">
             {% set artist_list = release.artist_list() %}
             {% if artist_list|length > 0 %}
