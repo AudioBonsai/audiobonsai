@@ -35,7 +35,7 @@ def get_user_conn(auth_user, host):
         sp_oauth = get_spotipy_oauth(host)
         if sp_oauth._is_token_expired(token_info):
             refresh_token = token_info['refresh_token']
-            token_info = sp_oauth._refresh_access_token(refresh_token)
+            token_info = sp_oauth.refresh_access_token(refresh_token)
             msg = 'Saving spotify_token as type {} from get_user_conn'
             print(msg.format(type(token_info)))
             auth_user.spotify_token = token_info
