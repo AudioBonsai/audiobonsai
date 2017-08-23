@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from audiobonsai import settings
 from pprint import pprint
-from sausage_grinder.models import ReleaseSet, Release, Genre, Track, Artist, Recommendation
+from sausage_grinder.models import ReleaseSet, Release, Genre, Artist, Recommendation, Track
 from spotipy import SpotifyException
 from spotify_helper.helpers import get_spotify_conn
 
@@ -14,7 +14,7 @@ from spotify_helper.helpers import get_spotify_conn
 
 
 def handle_album_list(sp, query_list):
-    track_list = []
+    #track_list = []
     album_dets_list = sp.albums(query_list)
     if album_dets_list is None:
         return
@@ -27,8 +27,8 @@ def handle_album_list(sp, query_list):
         except Release.MultipleObjectsReturned:
             print('Repeat album? {}, SKIPPING'.format(album_dets[u'uri']))
             continue
-        track_list += album.process(sp, album_dets)
-    Track.objects.bulk_create(track_list)
+        #track_list += album.process(sp, album_dets)
+    #Track.objects.bulk_create(track_list)
     return
 
 
@@ -286,7 +286,7 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     candidate_list.append(candidate)
 
             # Shorten list for debugging
-            # candidate_list = candidate_list[0:50]
+            candidate_list = candidate_list[0:50]
             Release.objects.bulk_create(candidate_list)
             self.message_user(request, '{0:d} releases processed to {1}'.format(len(candidate_list), week))
             print('{0:d} candidate releases'.format(len(candidate_list)))
