@@ -39,6 +39,10 @@ class Artist(models.Model):
     name = models.CharField(max_length=255, default='', blank=True)
     popularity = models.IntegerField(default=0)
     followers = models.IntegerField(default=0)
+    release_day_pop = models.IntegerField(default=0)
+    release_day_foll = models.IntegerField(default=0)
+    max_pop = models.IntegerField(default=0)
+    max_foll = models.IntegerField(default=0)
     processed = models.BooleanField(default=False)
     genres = models.ManyToManyField(Genre)
     image_640 = models.URLField(null=True)
@@ -49,12 +53,28 @@ class Artist(models.Model):
     def __str__(self):
         return self.name
 
+    def set_popularity(self, pop, release_day=False):
+        self.popularity = pop
+        if release_day:
+            self.release_day_pop = pop
+        if pop > self.max_pop:
+            self.max_pop = pop
+        self.save()
+
+    def set_followers(self, followers, release_day=False):
+        self.followers = followers
+        if release_day:
+            self.release_day_foll = followers
+        if followers > self.max_foll:
+            self.max_foll = followers
+        self.save()
+
     def process(self, sp, artist_dets):
+        self.set_popularity(artist_dets[u'popularity'], True)
+        self.set_followers(artist_dets[u'followers']['total'], True)
         if self.processed:
             return
 
-        self.popularity = artist_dets[u'popularity']
-        self.followers = artist_dets[u'followers']['total']
         for genre in artist_dets[u'genres']:
             try:
                 genre_obj = Genre.objects.get(name=genre)
@@ -188,6 +208,7 @@ class Release(models.Model):
         elif REMIX_REGEX.match(self.title) or REISSUE_REGEX.match(self.title) or REMASTER_REGEX.match(self.title):
             self.mark_ineligible()
             return False
+        '''
         elif album_dets[u'album_type'] == 'single' and len(album_dets[u'tracks'][u'items']) < 4:
             total_time = 0
             for track in album_dets[u'tracks'][u'items']:
@@ -197,6 +218,7 @@ class Release(models.Model):
             if total_time < 900000:
                 self.mark_ineligible()
                 return (False, None)
+        '''
         return True
 
 
