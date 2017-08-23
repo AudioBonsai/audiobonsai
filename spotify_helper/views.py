@@ -32,7 +32,7 @@ def spotify_request_token(request):
     if token_info is None or len(token_info) == 0:
         return HttpResponseRedirect(sp_oauth.get_authorize_url())
     elif sp_oauth._is_token_expired(token_info):
-        token_info = sp_oauth._refresh_access_token(token_info['refresh_token'])
+        token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
         print('Saving spotify_token as type {} from spotify_request_token'.format(type(token_info)))
         auth_user.spotify_token = token_info
         auth_user.save()

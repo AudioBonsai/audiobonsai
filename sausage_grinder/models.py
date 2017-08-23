@@ -13,8 +13,12 @@ REISSUE_REGEX = re.compile('.*reissue.*', re.IGNORECASE)
 
 
 class ReleaseSet(models.Model):
-    week_date = models.DateField(auto_now=False, auto_now_add=False, default=timezone.now)
+    week_date = models.DateField(auto_now=False, auto_now_add=False,
+                                 default=timezone.now)
     sampler_uri = models.CharField(max_length=255, default='', blank=True)
+    jesse_vote_uri = models.CharField(max_length=255, default='', blank=True)
+    moksha_vote_uri = models.CharField(max_length=255, default='', blank=True)
+    adam_vote_uri = models.CharField(max_length=255, default='', blank=True)
 
     def determine_popularities(self):
         for release in Release.objects.filter(week=self.id):
@@ -53,6 +57,7 @@ class Artist(models.Model):
     def __str__(self):
         return self.name
 
+
     def set_popularity(self, pop, release_day=False):
         self.popularity = pop
         if release_day:
@@ -68,6 +73,22 @@ class Artist(models.Model):
         if followers > self.max_foll:
             self.max_foll = followers
         self.save()
+
+    def release_list(self, type='PRIMARY'):
+        artistrelease_list = ArtistRelease.objects.filter(artist=self,
+                                                          type=type)
+        return [artistrelease.release for artistrelease in artistrelease_list]
+        #if len(artistrelease_list) == 0:
+        #    return ''
+        #formatted_list = ['<a href="release?id={}">{}</a> from {}'.format(
+        #                  artistrelease.release_id, artistrelease.release, artistrelease.release.week.week_date)
+        #                  for artistrelease in artistrelease_list]
+        #if len(formatted_list) > 1:
+        #    formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and',
+        #                                 formatted_list[-1]])
+        #else:
+        #    formatted_string = formatted_list[0]
+        #return formatted_string
 
     def process(self, sp, artist_dets):
         self.set_popularity(artist_dets[u'popularity'], True)
@@ -106,7 +127,8 @@ class Artist(models.Model):
         self.save()
 
     def process_album(self, sp, release):
-        artist_singles = sp.artist_albums(self.spotify_uri, album_type='single', country='US')
+        artist_singles = sp.artist_albums(self.spotify_uri,
+                                          album_type='single', country='US')
         single_uris = []
         for single in artist_singles[u'items']:
             if single[u'uri'] == release.spotify_uri:
@@ -118,7 +140,8 @@ class Artist(models.Model):
 
             for single in single_dets[u'albums']:
                 try:
-                    release_date = datetime.strptime(single[u'release_date'], '%Y-%m-%d').date()
+                    release_date = datetime.strptime(single[u'release_date'],
+                                                     '%Y-%m-%d').date()
                 except ValueError:
                     continue
                 if release.week.week_date - release_date > timedelta(days=120):
@@ -133,15 +156,15 @@ class Artist(models.Model):
                 except Track.DoesNotExist:
                     # None Found
                     for single_track in single[u'tracks'][u'items']:
-                       try:
+                        try:
                             release_tracks = release.track_set.filter(title=single_track[u'name'])
                             for release_track in release_tracks:
                                 release_track.single_release_date = release_date
                                 release_track.save()
                                 release.has_single = True
                                 release.save()
-                       except Track.DoesNotExist:
-                           # No matches
+                        except Track.DoesNotExist:
+                            # No matches
                             pass
 
 
@@ -151,8 +174,10 @@ class Release(models.Model):
     popularity = models.IntegerField(default=0)
     artist_popularity = models.IntegerField(default=0)
     popularity_class = models.CharField(max_length=255, default='',
-                                        choices=(('top', 'Top 50'), ('verge', 'On the Verge'),
-                                                 ('unheralded', 'Unheralded'), ('underground', 'Underground'),
+                                        choices=(('top', 'Top 50'),
+                                                 ('verge', 'On the Verge'),
+                                                 ('unheralded', 'Unheralded'),
+                                                 ('underground', 'Underground'),
                                                  ('unknown', 'Unknown')))
     eligible = models.BooleanField(default=True)
     processed = models.BooleanField(default=False)
@@ -162,23 +187,28 @@ class Release(models.Model):
     spotify_uri = models.CharField(max_length=255, default='')
     batch = models.IntegerField(default=0)
     week = models.ForeignKey(ReleaseSet, on_delete=models.CASCADE)
-    genres = models.ManyToManyField(Genre)
+    genres = models.ManyToManyField(Genre, blank=True)
     artists = models.ManyToManyField(Artist, through='ArtistRelease',
                                      through_fields=('release', 'artist'))
-    release_date = models.DateField(auto_now=False, auto_now_add=False, null=True)
+    release_date = models.DateField(auto_now=False, auto_now_add=False,
+                                    null=True)
     title = models.CharField(max_length=255, default='', blank=True)
-    image_640 = models.URLField(null=True)
-    image_600 = models.URLField(null=True)
-    image_300 = models.URLField(null=True)
-    image_64 = models.URLField(null=True)
+    image_640 = models.URLField(blank=True)
+    image_600 = models.URLField(blank=True)
+    image_300 = models.URLField(blank=True)
+    image_64 = models.URLField(blank=True)
 
     def artist_list(self, type='PRIMARY'):
-        artistrelease_list = ArtistRelease.objects.filter(release=self, type=type)
+        artistrelease_list = ArtistRelease.objects.filter(release=self,
+                                                          type=type)
         if len(artistrelease_list) == 0:
             return ''
-        formatted_list = ['<a href="artist?id={}">{}</a>'.format(artistrelease.id, artistrelease.artist) for artistrelease in artistrelease_list]
+        formatted_list = ['<a href="artist?id={}">{}</a>'.format(
+                          artistrelease.artist_id, artistrelease.artist)
+                          for artistrelease in artistrelease_list]
         if len(formatted_list) > 1:
-            formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and', formatted_list[-1]])
+            formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and',
+                                         formatted_list[-1]])
         else:
             formatted_string = formatted_list[0]
         return formatted_string
@@ -186,12 +216,17 @@ class Release(models.Model):
     def recommendation_list(self):
         return Recommendation.objects.filter(release=self)
 
+    def track_list(self):
+        return Track.objects.filter(release=self).order_by('disc_number', 'track_number')
+
     def __str__(self):
         if len(self.title) == 0:
-            return '{0} Rank:{1:6d}, Tracks:{2:2d}'.format(self.spotify_uri, self.sorting_hat_rank,
+            return '{0} Rank:{1:6d}, Tracks:{2:2d}'.format(self.spotify_uri,
+                                                           self.sorting_hat_rank,
                                                            self.sorting_hat_track_num)
         else:
-            return self.title + ' by ' + ', '.join([artist.name for artist in self.artists.all()])
+            return self.title + ' by ' + ', '.join([artist.name for artist in
+                                                    self.artists.all()])
 
     def mark_ineligible(self):
         self.eligible = False
@@ -199,7 +234,9 @@ class Release(models.Model):
         self.save()
 
     def check_eligility(self, album_dets):
-        if album_dets[u'release_date_precision'] != 'day' or 'US' not in album_dets[u'available_markets']:
+        if album_dets[u'release_date_precision'] != 'day' or \
+            (len(album_dets[u'available_markets']) > 0 and \
+            'US' not in album_dets[u'available_markets']):
             self.mark_ineligible()
             return False
         elif self.release_date > self.week.week_date or self.week.week_date - self.release_date > timedelta(days=7):
@@ -221,9 +258,9 @@ class Release(models.Model):
         '''
         return True
 
-
     def determine_popularity(self):
-        artist_links = ArtistRelease.objects.filter(release_id=self.id, type='PRIMARY')
+        artist_links = ArtistRelease.objects.filter(release_id=self.id,
+                                                    type='PRIMARY')
         self.artist_popularity = 0
         for link in artist_links:
             artist = Artist.objects.get(id=link.artist_id)
@@ -241,18 +278,20 @@ class Release(models.Model):
             self.popularity_class = 'underground'
         self.save()
 
-    def process(self, sp, album_dets):
+    def process(self, sp, album_dets, all_eligible=False):
         track_list = []
         if self.processed:
             return track_list
 
         try:
-            self.release_date = datetime.strptime(album_dets[u'release_date'], '%Y-%m-%d').date()
+            self.release_date = datetime.strptime(album_dets[u'release_date'],
+                                                  '%Y-%m-%d').date()
         except ValueError:
             self.mark_ineligible()
             return track_list
         self.title = album_dets[u'name']
-        if not self.check_eligility(album_dets):
+        print(album_dets[u'name'])
+        if not (all_eligible or self.check_eligility(album_dets)):
             return track_list
 
         self.popularity = album_dets[u'popularity']
@@ -260,7 +299,9 @@ class Release(models.Model):
             try:
                 artist_obj = Artist.objects.get(spotify_uri=artist[u'uri'])
             except Artist.DoesNotExist:
-                artist_obj = Artist(spotify_uri=artist[u'uri'], name=artist[u'name'])
+                artist_obj = Artist(spotify_uri=artist[u'uri'],
+                                    name=artist[u'name'])
+                print('- ' + artist[u'name'])
                 artist_obj.save()
             ArtistRelease.objects.create(artist=artist_obj, release=self)
         for genre in album_dets[u'genres']:
@@ -292,7 +333,9 @@ class Release(models.Model):
 class ArtistRelease(models.Model):
     artist = models.ForeignKey(Artist, on_delete=models.CASCADE)
     release = models.ForeignKey(Release, on_delete=models.CASCADE)
-    type = models.CharField(max_length=8, default='PRIMARY', choices=(('PRIMARY', 'PRIMARY'), ('FEATURED', 'FEATURED')))
+    type = models.CharField(max_length=8, default='PRIMARY',
+                            choices=(('PRIMARY', 'PRIMARY'),
+                                     ('FEATURED', 'FEATURED')))
 
 
 class Track(models.Model):
@@ -304,7 +347,8 @@ class Track(models.Model):
     disc_number = models.IntegerField(default=0)
     is_sample = models.BooleanField(default=False)
     is_freshcut = models.BooleanField(default=False)
-    single_release_date = models.DateField(auto_now=False, auto_now_add=False, null=True)
+    single_release_date = models.DateField(auto_now=False, auto_now_add=False,
+                                           null=True)
 
     def __str__(self):
         if len(self.title) == 0:
@@ -323,10 +367,13 @@ class Track(models.Model):
             try:
                 artist_obj = Artist.objects.get(spotify_uri=artist[u'uri'])
             except Artist.DoesNotExist:
-                artist_obj = Artist(spotify_uri=artist[u'uri'], name=artist[u'name'])
+                artist_obj = Artist(spotify_uri=artist[u'uri'],
+                                    name=artist[u'name'])
                 artist_obj.save()
             if artist_obj not in release.artists.all():
-                ArtistRelease.objects.create(artist=artist_obj, release=release, type='FEATURED')
+                ArtistRelease.objects.create(artist=artist_obj,
+                                             release=release, type='FEATURED')
+
 
 class Recommendation(models.Model):
     JESSE = 'Jesse'
@@ -350,3 +397,4 @@ class Recommendation(models.Model):
     type = models.CharField(max_length=25, choices=REC_CHOICES)
     release = models.ForeignKey(Release, on_delete=models.CASCADE)
     track = models.ForeignKey(Track, on_delete=models.CASCADE)
+    position = models.IntegerField(default=0)

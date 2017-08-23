@@ -13,7 +13,7 @@ from spotify_helper.helpers import get_spotify_conn
 # Register your models here.
 
 
-def handle_album_list(sp, query_list):
+def handle_album_list(sp, query_list, all_eligible=False):
     #track_list = []
     album_dets_list = sp.albums(query_list)
     if album_dets_list is None:
@@ -27,17 +27,17 @@ def handle_album_list(sp, query_list):
         except Release.MultipleObjectsReturned:
             print('Repeat album? {}, SKIPPING'.format(album_dets[u'uri']))
             continue
-        #track_list += album.process(sp, album_dets)
+        #track_list += album.process(sp, album_dets, all_eligible)
     #Track.objects.bulk_create(track_list)
     return
 
 
-def handle_albums(sp):
-    candidate_list = Release.objects.filter(processed=False)
+def handle_albums(sp, release_set, all_eligible=False):
+    candidate_list = Release.objects.filter(processed=False, week=release_set)
     offset = 0
     while offset < len(candidate_list):
         sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
-        handle_album_list(sp, sp_uri_list)
+        handle_album_list(sp, sp_uri_list, all_eligible)
         offset += 20
 
 
@@ -109,9 +109,9 @@ class ArtistAdmin(admin.ModelAdmin):
 
 class ReleaseSetAdmin(admin.ModelAdmin):
     list_display = ['week_date', 'sampler_uri']
-    ordering = ['week_date']
-    actions = ['parse_sorting_hat', 'load_samples', 'delete_ineligible_releases', 'determine_popularities']
-
+    ordering = ['-week_date']
+    actions = ['parse_sorting_hat', 'load_samples', 'process_lists',
+               'delete_ineligible_releases', 'determine_popularities']
 
     def determine_popularities(self, request, queryset):
         for week in queryset:
@@ -124,70 +124,69 @@ class ReleaseSetAdmin(admin.ModelAdmin):
     def load_samples(self, request, queryset):
         offset = 0
         list_count = 500
-        fc_lists = {}
-        top_ten_lists = {}
         sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            return sp
         while(offset < list_count):
             output = sp.user_playlists(sp.current_user()[u'id'], offset=offset)
-            print('offset:{} limit:{} total:{}'.format(output[u'offset'], output[u'limit'], output[u'total']))
+            print('offset:{} limit:{} total:{}'.format(output[u'offset'],
+                  output[u'limit'], output[u'total']))
 
             for item in output[u'items']:
-                fc_match = re.match(r'^Fresh Cuts: (.* [0-9]+, [0-9]+)$', item[u'name'])
-                top_ten_match = re.match(r'.* by (.*): (.* [0-9]+, [0-9]+)$', item[u'name'])
-                pruning_session_match = re.match(r'Pruning Session Episode [0-9]+$', item[u'name'])
+                fc_match = re.match(r'^Fresh Cuts: (.* [0-9]+, [0-9]+)$',
+                                    item[u'name'])
+                top_ten_match = re.match(r'.* by (.*): (.* [0-9]+, [0-9]+)$',
+                                         item[u'name'])
+
                 if fc_match is not None:
                     date_text = fc_match.group(1)
                     fc_date = datetime.strptime(date_text, '%B %d, %Y')
-                    fc_lists[fc_date] = item[u'uri']
-                elif top_ten_match is not None or pruning_session_match is not None or \
-                     item[u'name'] == 'SotD 2014' or item[u'name'] == 'SotD 2015':
-                    recommender = 'Audio Bonsai'
-                    if top_ten_match is not None:
-                        recommender = top_ten_match.group(1)
-                    if recommender not in top_ten_lists.keys():
-                        top_ten_lists[recommender] = [item[u'uri']]
-                    else:
-                        top_ten_lists[recommender].append(item[u'uri'])
-                    #print('Recommendations by {} for {}: {}'.format(recommender, fc_date.strftime('%Y-%m-%d'), item[u'name']))
+                    try:
+                        release_set = ReleaseSet.objects.get(week_date=fc_date)
+                    except ReleaseSet.DoesNotExist:
+                        release_set = ReleaseSet()
+                        release_set.week_date = fc_date
+                    release_set.sampler_uri = item[u'uri']
+                    release_set.save()
+                elif top_ten_match is not None:
+                    recommender = top_ten_match.group(1)
+                    date_text = top_ten_match.group(2)
+                    recommend_date = datetime.strptime(date_text, '%B %d, %Y')
+                    try:
+                        release_set = ReleaseSet.objects.get(week_date=recommend_date)
+                    except ReleaseSet.DoesNotExist:
+                        release_set = ReleaseSet()
+                        release_set.week_date = recommend_date
+                    if recommender.lower() == 'adam':
+                        release_set.adam_vote_uri = item[u'uri']
+                    elif recommender.lower() == 'moksha':
+                        release_set.moksha_vote_uri = item[u'uri']
+                    elif recommender.lower() == 'jesse':
+                        release_set.jesse_vote_uri = item[u'uri']
+                    release_set.save()
                 else:
                     print(item[u'name'])
             offset += output[u'limit']
             list_count = output[u'total']
-        #self.message_user(request, '{}: {}'.format(datetime.now(), output))
-        print('{0:d} FC lists found'.format(len(fc_lists)))
-        for fc_date in fc_lists.keys():
-            print('{} Loading {}'.format(datetime.now(), fc_date.strftime('%Y-%m-%d')))
-            self.load_sampler(request, fc_date, fc_lists[fc_date])
-            break
 
-        for recommender in top_ten_lists.keys():
-            for list in top_ten_lists[recommender]:
-                print('{} Processing recommendations for {}: {}'.format(datetime.now(), recommender, list))
-                self.load_recommendations(request, list, recommender)
+    def process_lists(self, request, queryset):
+        for release_set in queryset:
+            self.load_sampler(request, release_set)
+            self.load_recommendations(request, release_set)
 
-
-    def load_sampler(self, request, week_date, list_uri):
-        release_set = None
-        try:
-            release_set = ReleaseSet.objects.get(week_date=week_date)
-            if release_set.sampler_uri is not None:
-                return
-            release_set.sampler_uri = list_uri
-            release_set.save()
-        except ReleaseSet.DoesNotExist:
-            release_set = ReleaseSet()
-            release_set.week_date = week_date
-            release_set.sampler_uri = list_uri
-            release_set.save()
-
+    def load_sampler(self, request, release_set):
         sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            return sp
         offset = 0
         list_count = 500
         albums = {}
         tracks = []
         while (offset < list_count):
-            output = sp.user_playlist_tracks(sp.current_user()[u'id'], list_uri, offset=offset)
-            #pprint(output)
+            output = sp.user_playlist_tracks(sp.current_user()[u'id'],
+                                             release_set.sampler_uri,
+                                             offset=offset)
+            # pprint(output)
             offset += output[u'limit']
             list_count = output[u'total']
             for item in output[u'items']:
@@ -197,16 +196,19 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     continue
                 tracks.append(track[u'uri'])
                 try:
-                    candidate = Release.objects.get(spotify_uri=track[u'album'][u'uri'])
+                    candidate = Release.objects.get(
+                                           spotify_uri=track[u'album'][u'uri'])
                 except Release.DoesNotExist:
-                    candidate = Release(spotify_uri=track[u'album'][u'uri'], week=release_set)
+                    candidate = Release(spotify_uri=track[u'album'][u'uri'],
+                                        week=release_set)
                     if track[u'album'][u'uri'] not in albums.keys():
                         albums[track[u'album'][u'uri']] = candidate
                 candidate.is_sample = True
 
         Release.objects.bulk_create(albums.values())
-        handle_albums(sp)
+        handle_albums(sp, release_set, True)
         handle_artists(sp)
+        release_set.determine_popularities()
 
         for track in tracks:
             try:
@@ -218,16 +220,34 @@ class ReleaseSetAdmin(admin.ModelAdmin):
             except Track.MultipleObjectsReturned:
                 print('Hey, we already say this one... {}'.format(track))
 
-    def load_recommendations(self, request, list_uri, recommender):
+    def load_recommendations(self, request, release_set):
+        if release_set.adam_vote_uri is not None and len(release_set.adam_vote_uri) > 0:
+            self.load_recommendation_list(request, release_set,
+                                          release_set.adam_vote_uri, 'Adam')
+        if release_set.jesse_vote_uri is not None and len(release_set.jesse_vote_uri) > 0:
+            self.load_recommendation_list(request, release_set,
+                                          release_set.jesse_vote_uri, 'Jesse')
+        if release_set.moksha_vote_uri is not None and len(release_set.moksha_vote_uri) > 0:
+            self.load_recommendation_list(request, release_set,
+                                          release_set.moksha_vote_uri,
+                                          'Moksha')
+
+    def load_recommendation_list(self, request, release_set, list_uri,
+                                 recommender):
         sp = get_spotify_conn(request)
+        if type(sp) is HttpResponseRedirect:
+            return sp
         offset = 0
         list_count = 500
+        pos = 0
         while (offset < list_count):
-            output = sp.user_playlist_tracks(sp.current_user()[u'id'], list_uri, offset=offset)
+            output = sp.user_playlist_tracks(sp.current_user()[u'id'],
+                                             list_uri, offset=offset)
             # pprint(output)
             offset += output[u'limit']
             list_count = output[u'total']
             for item in output[u'items']:
+                pos += 1
                 track = item[u'track']
                 album = track[u'album'][u'uri']
                 try:
@@ -238,7 +258,8 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     print('TRACK NOT FOUND, OH SHIT! {}'.format(track[u'uri']))
                     continue
                 except Track.MultipleObjectsReturned:
-                    print('FOUND TWO VERSIONS OF THE TRACK! {}'.format(track[u'uri']))
+                    print('FOUND TWO VERSIONS OF THE TRACK! {}'.format(
+                          track[u'uri']))
                     continue
 
                 try:
@@ -251,7 +272,8 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     print('FOUND TWO VERSIONS OF THE ALBUM: {}'.format(album))
 
                 if track_obj is not None and release is not None:
-                    rec = Recommendation(type=recommender, release=release, track=track_obj)
+                    rec = Recommendation(type=recommender, release=release,
+                                         track=track_obj, position=pos)
                     rec.save()
 
     def parse_sorting_hat(self, request, queryset):
@@ -293,7 +315,7 @@ class ReleaseSetAdmin(admin.ModelAdmin):
 
         try:
             self.message_user(request, '{}: handle_albums'.format(datetime.now()))
-            handle_albums(sp)
+            handle_albums(sp, week)
             self.message_user(request, '{}: delete_ineligible_releases'.format(datetime.now()))
             week.delete_ineligible_releases()
             print('{0:d} candidate releases eligible'.format((len(Release.objects.all()))))
@@ -332,9 +354,9 @@ class ReleaseAdmin(admin.ModelAdmin):
             if len(query_list) < 20:
                 query_list.append(album.spotify_uri)
             else:
-                self.handle_album_list(sp, query_list)
+                handle_album_list(sp, query_list)
                 query_list = [album.spotify_uri]
-        self.handle_album_list(sp, query_list)
+        handle_album_list(sp, query_list)
         return
 
 

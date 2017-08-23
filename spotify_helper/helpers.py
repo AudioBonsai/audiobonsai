@@ -1,10 +1,10 @@
 from audiobonsai import settings
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponseRedirect
 import json
 from spotify_helper.models import SpotifyUser
 import spotipy
 from spotipy import oauth2
-from time import sleep
+
 
 def get_spotify_conn(request):
     return_path = request.path
@@ -30,15 +30,19 @@ def get_user_conn(auth_user, host):
     if len(auth_user.spotify_token) > 0:
         print(type(auth_user.spotify_token))
         print(auth_user.spotify_token)
-        token_info = json.loads(auth_user.spotify_token.__str__().replace('\'', '"'))
+        token_info = json.loads(auth_user.spotify_token.__str__().replace('\'',
+                                                                          '"'))
         sp_oauth = get_spotipy_oauth(host)
         if sp_oauth._is_token_expired(token_info):
-            token_info = sp_oauth._refresh_access_token(token_info['refresh_token'])
-            print('Saving spotify_token as type {} from get_user_conn'.format(type(token_info)))
+            refresh_token = token_info['refresh_token']
+            token_info = sp_oauth.refresh_access_token(refresh_token)
+            msg = 'Saving spotify_token as type {} from get_user_conn'
+            print(msg.format(type(token_info)))
             auth_user.spotify_token = token_info
             auth_user.save()
 
     return spotipy.Spotify(auth=token_info['access_token'])
+
 
 def get_spotipy_oauth(host_string):
     callback_url = 'http://' + host_string + '/spotify/login'
@@ -46,4 +50,3 @@ def get_spotipy_oauth(host_string):
                                settings.SPOTIPY_CLIENT_SECRET,
                                callback_url,
                                scope=settings.SPOTIFY_SCOPE)
-

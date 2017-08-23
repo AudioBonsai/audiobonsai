@@ -1,12 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8">
+    <link rel='stylesheet' id='ab.css'  href="{{ static('sausage_grinder/ab.css') }}" type='text/css'/>
     <link rel="shortcut icon" href="{{ static('sausage_grinder/favicon.ico') }}" />
     <title>{% block title %}{% endblock %}</title>
-</head>
-<body>
-    <h1>Welcome to Audio Bonsai!</h1>
-    {% block content %}{% endblock %}
-</body>
+  </head>
+  <body>
+    <div id='page' style="width:100%;background:#bbcb7c">
+      <div id='container' style="width:1000px;background:#ffffff;margin=10px">
+        <div id='header' style="width:980px;margin=10px">
+          <img src="{{ static('sausage_grinder/ab_news_pro_logo.png') }}"/>
+          <div id='header_buttons' style='float:right;padding-right:15px'>
+            <br>
+            <a href="https://twitter.com/audiobonsai" target="_blank">
+              <img src="{{ static('sausage_grinder/Twitter.png') }}"
+                onmouseover="this.src='{{ static('sausage_grinder/Twitter-hover.png') }}'"
+                onmouseout="this.src='{{ static('sausage_grinder/Twitter.png')}}'"
+                hspace="2"/>
+            </a>
+            <a href="https://www.facebook.com/AudioBonsaiWeekly" target="_blank">
+              <img src="{{ static('sausage_grinder/Facebook.png') }}"
+                onmouseover="this.src='{{ static('sausage_grinder/Facebook-hover.png') }}'"
+                onmouseout="this.src='{{ static('sausage_grinder/Facebook.png')}}'"
+                hspace="2"/>
+            </a>
+            <a href="http://open.spotify.com/user/audiobonsai" target="_blank">
+              <img src="{{ static('sausage_grinder/Spotify.png') }}"
+                onmouseover="this.src='{{ static('sausage_grinder/Spotify-hover.png') }}'"
+                onmouseout="this.src='{{ static('sausage_grinder/Spotify.png')}}'"
+                hspace="2"/>
+            </a>
+          </div>
+        </div>
+        <br/>
+        <div id='sidebar'>
+          The always current Fresh Cuts:
+          <iframe class='spotify' allowtransparency="true" frameborder="0"
+            src="https://embed.spotify.com/?uri=spotify%3Auser:audiobonsai%3Aplaylist%3A1FPe3BebdleEhyjPVmDgbr">
+          </iframe>
+          <br/><br/>
+          Weekly New Music Sampler:
+          <iframe width="300" height="380" style="margin:5px" frameborder="0"
+            allowtransparency="true"
+            src="https://embed.spotify.com/?uri=spotify%3Auser%3Aaudiobonsai%3Aplaylist%3A5CmD30dzQjCujR4CAnL8qc">
+          </iframe>
+        </div>
+        <div id='content'>
+          {% block content %}{% endblock %}
+        </div>
+      </div>
+    </div>
+  </body>
 </html>
