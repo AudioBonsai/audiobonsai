@@ -20,9 +20,13 @@ class ReleaseSet(models.Model):
     moksha_vote_uri = models.CharField(max_length=255, default='', blank=True)
     adam_vote_uri = models.CharField(max_length=255, default='', blank=True)
 
-    def determine_popularities(self):
-        for release in Release.objects.filter(week=self.id):
-            release.determine_popularity()
+    #def determine_popularities(self):
+    #    for release in Release.objects.filter(week=self.id):
+    #        release.determine_popularity()
+
+    def delete_ineligible_releases(self):
+        ineligible_list = Release.objects.filter(eligible=False, week=self)
+        [ineligible.delete() for ineligible in ineligible_list]
 
     def __str__(self):
         return self.week_date.strftime('%c')
@@ -92,6 +96,7 @@ class Artist(models.Model):
 
     def process(self, sp, artist_dets):
         self.set_popularity(artist_dets[u'popularity'], True)
+        pprint(artist_dets)
         self.set_followers(artist_dets[u'followers']['total'], True)
         if self.processed:
             return
@@ -289,8 +294,12 @@ class Release(models.Model):
         except ValueError:
             self.mark_ineligible()
             return track_list
-        self.title = album_dets[u'name']
-        print(album_dets[u'name'])
+        try:
+            self.title = album_dets[u'name']
+            print(album_dets[u'name'])
+        except UnicodeEncodeError:
+            self.mark_ineligible()
+            return track_list
         if not (all_eligible or self.check_eligility(album_dets)):
             return track_list
 

@@ -14,7 +14,7 @@ from spotify_helper.helpers import get_spotify_conn
 
 
 def handle_album_list(sp, query_list, all_eligible=False):
-    #track_list = []
+    track_list = []
     album_dets_list = sp.albums(query_list)
     if album_dets_list is None:
         return
@@ -27,13 +27,15 @@ def handle_album_list(sp, query_list, all_eligible=False):
         except Release.MultipleObjectsReturned:
             print('Repeat album? {}, SKIPPING'.format(album_dets[u'uri']))
             continue
-        #track_list += album.process(sp, album_dets, all_eligible)
+        track_list += album.process(sp, album_dets, all_eligible)
     #Track.objects.bulk_create(track_list)
     return
 
 
 def handle_albums(sp, release_set, all_eligible=False):
     candidate_list = Release.objects.filter(processed=False, week=release_set)
+    print('RELEASE SET: {}'.format(release_set.week_date))
+    print('CANDIDATE LIST LENGTH: {0:d}'.format(len(candidate_list)))
     offset = 0
     while offset < len(candidate_list):
         sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
@@ -62,18 +64,6 @@ def handle_artists(sp):
         handle_artist_list(sp, sp_uri_list)
         offset += 20
     return True
-
-
-def delete_artists_with_no_release():
-    artists = Artist.objects.all()
-    [artist.delete() for artist in artists if len(artist.candidaterelease_set.all()) == 0]
-
-
-def delete_empty_genres():
-    genres = Genre.objects.all()
-    [genre.delete() for genre in genres if len(genre.candidaterelease_set.all()) == 0 and
-     len(genre.candidateartist_set.all()) == 0]
-
 
 class GenreAdmin(admin.ModelAdmin):
     list_display = ['name']
@@ -110,16 +100,7 @@ class ArtistAdmin(admin.ModelAdmin):
 class ReleaseSetAdmin(admin.ModelAdmin):
     list_display = ['week_date', 'sampler_uri']
     ordering = ['-week_date']
-    actions = ['parse_sorting_hat', 'load_samples', 'process_lists',
-               'delete_ineligible_releases', 'determine_popularities']
-
-    def determine_popularities(self, request, queryset):
-        for week in queryset:
-            week.determine_popularities()
-
-    def delete_ineligible_releases(self):
-        ineligible_list = Release.objects.filter(eligible=False, week=self)
-        [ineligible.delete() for ineligible in ineligible_list]
+    actions = ['parse_sorting_hat', 'load_samples', 'process_lists']
 
     def load_samples(self, request, queryset):
         offset = 0
@@ -208,7 +189,6 @@ class ReleaseSetAdmin(admin.ModelAdmin):
         Release.objects.bulk_create(albums.values())
         handle_albums(sp, release_set, True)
         handle_artists(sp)
-        release_set.determine_popularities()
 
         for track in tracks:
             try:
@@ -283,7 +263,7 @@ class ReleaseSetAdmin(admin.ModelAdmin):
             return sp
 
         week = queryset[0]
-        if len(Release.objects.all()) == 0:
+        if len(Release.objects.filter(week=week)) == 0:
             print('{}: Downloading Sorting Hat and creating releases'.format(datetime.now()))
             response = urlopen('http://everynoise.com/spotify_new_releases.html')
             html = response.read().decode("utf-8")
@@ -309,28 +289,22 @@ class ReleaseSetAdmin(admin.ModelAdmin):
 
             # Shorten list for debugging
             candidate_list = candidate_list[0:50]
+            print(candidate_list)
             Release.objects.bulk_create(candidate_list)
             self.message_user(request, '{0:d} releases processed to {1}'.format(len(candidate_list), week))
             print('{0:d} candidate releases'.format(len(candidate_list)))
 
         try:
             self.message_user(request, '{}: handle_albums'.format(datetime.now()))
-            handle_albums(sp, week)
+            handle_albums(sp, week, True)
             self.message_user(request, '{}: delete_ineligible_releases'.format(datetime.now()))
             week.delete_ineligible_releases()
-            print('{0:d} candidate releases eligible'.format((len(Release.objects.all()))))
             self.message_user(request, '{0:d} releases eligible to {1}'.format(len(Release.objects.all()), week))
             print('{0:d} candidate artists'.format((len(Artist.objects.all()))))
-            self.message_user(request, '{}: delete_artists_with_no_release'.format(datetime.now()))
-            delete_artists_with_no_release()
             self.message_user(request, '{}: handle_artists'.format(datetime.now()))
             handle_artists(sp)
             print('{0:d} candidate artists with a release'.format((len(Artist.objects.all()))))
             self.message_user(request, '{0:d} aritists added to {1}'.format(len(Artist.objects.all()), week))
-            print('{0:d} genres'.format((len(Genre.objects.all()))))
-            self.message_user(request, '{}: delete_empty_genres'.format(datetime.now()))
-            delete_empty_genres()
-            print('{0:d} genres with a release or artist'.format((len(Genre.objects.all()))))
             self.message_user(request, '{0:d} genres added to {1}'.format(len(Genre.objects.all()), week))
             self.message_user(request, '{}: done'.format(datetime.now()))
         except SpotifyException:
