@@ -6,10 +6,44 @@
 <img src="{{ artist.image_640 }}"/>
 {% elif artist.image_600 is not none %}
 <img src="{{ artist.image_600 }}"/>
-{% endif %}
+{% endif %}<br/><br/>
 {{ artist.name }}<br/>
-Spotify followers: {{ artist.followers }}<br/>
-Spotify rank: {{ artist.popularity }}<br/>
+
+<table>
+<tr><td>Spotify followers:</td><td style="text-align:right">{{ "{:,d}".format(artist.followers) }}</td></tr>
+{% if artist.followers > artist.release_day_foll %}
+<tr><td>&nbsp;&nbsp;at most recent release:</td><td style="text-align:right">{{ "{:,d}".format(artist.release_day_foll) }}
+(<font color=green>+{{ artist.followers - artist.release_day_foll }}</font>)
+</td></tr>
+{% elif artist.followers < artist.release_day_foll %}
+<tr><td>&nbsp;&nbsp;at most recent release:</td><td style="text-align:right">{{ "{:,d}".format(artist.release_day_foll) }}
+(<font color=red>-{{ artist.release_day_foll - artist.followers }}</font>)
+</td></tr>
+{% endif %}
+{% if artist.max_foll > artist.followers %}
+<tr><td>&nbsp;&nbsp;max:</td><td align="right">{{ "{:,d}".format(artist.max_foll) }}
+(<font color=red>-{{ artist.max_foll - artist.followers }}</font>)
+</td></tr>
+{% endif %}
+<tr><td></td><td></td></tr>
+<tr><td>Spotify popularity:</td><td style="text-align:right">{{ artist.popularity }}</td></tr>
+{% if artist.popularity > artist.release_day_pop %}
+<tr><td>&nbsp;&nbsp;at most recent release:</td><td style="text-align:right">{{ artist.release_day_pop }}
+(<font color=green>+{{ artist.popularity - artist.release_day_pop }}</font>)
+</td></tr>
+{% elif artist.popularity < artist.release_day_pop %}
+<tr><td>&nbsp;&nbsp;at most recent release:</td><td style="text-align:right">{{ artist.release_day_pop }}
+(<font color=red>-{{ artist.release_day_pop - artist.popularity }}</font>)
+</td></tr>
+{% endif %}
+{% if artist.max_pop > artist.popularity %}
+<tr><td>&nbsp;&nbsp;max:</td><td>{{ artist.max_pop }}
+(<font color=red>-{{ artist.max_pop - artist.popularity }}</font>)
+</td></tr>
+{% endif %}
+</table>
+
+
 <div class="genres">
     {% for genre in artist.genres.all() %}
         <a href="genre?id={{ genre.name|urlencode() }}">{{ genre.name }}</a>

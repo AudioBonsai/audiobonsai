@@ -1,7 +1,25 @@
+{% import 'sausage_grinder/list_item_macros.html' as list_macros %}
+
 {% extends "sausage_grinder/base.html" %}
 {% block title %}Sausage Grinder{% endblock %}
 
 {% block content %}
+<div id='Most Popular'><h1>Most Popular Artists' Recent Releases</h1>
+<div id='most_popular'>
+{% for artist in most_popular %}
+{{ list_macros.release_list_item(artist.most_recent_release()) }}
+{% endfor %}
+</div>
+</div>
+
+<div id='Most Followers'><h1>Most Followed Artists' Recent Releases</h1>
+<div id='most_followers'>
+{% for artist in most_followers %}
+{{ list_macros.release_list_item(artist.most_recent_release()) }}
+{% endfor %}
+</div>
+</div>
+
 <div id="fresh_cuts">
 {% for week in weeks %}
     <div><a href="week?id={{ week.week_date }}">{{ week.week_date }}</a></div>

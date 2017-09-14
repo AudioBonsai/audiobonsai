@@ -16,14 +16,18 @@ def sausage_grinder_index(request):
         weeks = p.page(1)
     except EmptyPage:
         weeks = p.page(p.num_pages)
+    most_popular = Artist.objects.order_by('-popularity')[:5]
+    most_followers = Artist.objects.order_by('-followers')[:5]
     context = {
-        'release_count': Release.objects.count(),
-        'processed_releases': Release.objects.filter(processed=True).count(),
-        'eligible_releases': Release.objects.filter(eligible=True).count(),
-        'ineligible_releases': Release.objects.filter(eligible=False).count(),
-        'artist_count': Artist.objects.count(),
-        'processed_artists': Artist.objects.filter(processed=True).count(),
-        'genre_count': Genre.objects.count(),
+        #'release_count': Release.objects.count(),
+        #'processed_releases': Release.objects.filter(processed=True).count(),
+        #'eligible_releases': Release.objects.filter(eligible=True).count(),
+        #'ineligible_releases': Release.objects.filter(eligible=False).count(),
+        #'artist_count': Artist.objects.count(),
+        #'processed_artists': Artist.objects.filter(processed=True).count(),
+        #'genre_count': Genre.objects.count(),
+        'most_popular': most_popular,
+        'most_followers': most_followers,
         'weeks': weeks,
     }
     template = loader.get_template('sausage_grinder/index.html')
@@ -34,9 +38,17 @@ def week(request):
     week_date = request.GET.get('id')
     try:
         week = ReleaseSet.objects.get(week_date=week_date)
-        releases = Release.objects.filter(week=week).order_by('-artist_popularity')
     except ReleaseSet.DoesNotExist:
         return HttpResponse('Well fuuuuuuuck.')
+
+    page_no = request.GET.get('page')
+    p = Paginator(Release.objects.filter(week=week).order_by('-artist_popularity'), 10)
+    try:
+        releases = p.page(page_no)
+    except PageNotAnInteger:
+        releases = p.page(1)
+    except EmptyPage:
+        releases = p.page(p.num_pages)
     context = {
         'week': week,
         'releases': releases

@@ -78,6 +78,15 @@ class Artist(models.Model):
             self.max_foll = followers
         self.save()
 
+    def most_recent_release(self, type='PRIMARY'):
+        artistrelease_list = ArtistRelease.objects.filter(artist=self,
+                                                          type=type)
+        release = None
+        for artistrelease in artistrelease_list:
+            if release is None or artistrelease.release.week.week_date < release.week.week_date:
+                release = artistrelease.release
+        return release
+
     def release_list(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
                                                           type=type)
@@ -96,7 +105,7 @@ class Artist(models.Model):
 
     def process(self, sp, artist_dets):
         self.set_popularity(artist_dets[u'popularity'], True)
-        pprint(artist_dets)
+        #pprint(artist_dets)
         self.set_followers(artist_dets[u'followers']['total'], True)
         if self.processed:
             return
@@ -108,6 +117,7 @@ class Artist(models.Model):
                 genre_obj = Genre(name=genre)
                 genre_obj.save()
             self.genres.add(genre_obj)
+
         for image in artist_dets[u'images']:
             if image[u'height'] == 640 or image[u'width'] == 640:
                 self.image_640 = image[u'url']
@@ -124,13 +134,14 @@ class Artist(models.Model):
                 release.genres.add(genre)
 
             link = ArtistRelease.objects.get(artist=self, release=release)
-            if link.type == 'PRIMARY':
-                self.process_album(sp, release)
+            #if link.type == 'PRIMARY':
+            #    self.process_album(sp, release)
             release.save()
 
         self.processed = True
         self.save()
 
+    '''
     def process_album(self, sp, release):
         artist_singles = sp.artist_albums(self.spotify_uri,
                                           album_type='single', country='US')
@@ -171,6 +182,7 @@ class Artist(models.Model):
                         except Track.DoesNotExist:
                             # No matches
                             pass
+    '''
 
 
 class Release(models.Model):
@@ -320,6 +332,7 @@ class Release(models.Model):
                 genre_obj = Genre(name=genre)
                 genre_obj.save()
             self.genres.add(genre_obj)
+
         for image in album_dets[u'images']:
             if image[u'height'] == 640 or image[u'width'] == 640:
                 self.image_640 = image[u'url']
@@ -329,11 +342,12 @@ class Release(models.Model):
                 self.image_300 = image[u'url']
             elif image[u'height'] == 64 or image[u'width'] == 64:
                 self.image_64 = image[u'url']
+        '''
         for track in album_dets[u'tracks'][u'items']:
             track_obj = Track(spotify_uri=track[u'uri'])
             track_obj.process_track(track, self)
             track_list.append(track_obj)
-
+        '''
         self.processed = True
         self.save()
         return track_list

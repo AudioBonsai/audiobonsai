@@ -5,7 +5,26 @@
 
 {% block content %}
 <div class='title'>{{ week.week_date }}</div>
+
+<div id='releases'>
 {% for release in releases %}
 {{ list_macros.release_list_item(release) }}
 {% endfor %}
+</div>
+
+<div class="pagination">
+    <span class="step-links">
+        {% if releases.has_previous() %}
+            <a href="?page={{ releases.previous_page_number() }}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ releases.number }} of {{ releases.paginator.num_pages }}.
+        </span>
+
+        {% if releases.has_next() %}
+            <a href="?id={{ week.week_date }}&page={{ releases.next_page_number() }}">next</a>
+        {% endif %}
+    </span>
+</div>
 {% endblock %}

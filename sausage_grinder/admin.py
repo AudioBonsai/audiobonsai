@@ -288,7 +288,7 @@ class ReleaseSetAdmin(admin.ModelAdmin):
                     candidate_list.append(candidate)
 
             # Shorten list for debugging
-            candidate_list = candidate_list[0:50]
+            #candidate_list = candidate_list[0:50]
             print(candidate_list)
             Release.objects.bulk_create(candidate_list)
             self.message_user(request, '{0:d} releases processed to {1}'.format(len(candidate_list), week))

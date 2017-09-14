@@ -59,3 +59,7 @@ div.artist {
 div.genres {
   font-size: 10px;
 }
+
+div.release_list_item {
+  height: 84px;
+}
