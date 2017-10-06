@@ -27,6 +27,7 @@ urlpatterns = [
     url(r'^spotify/expire_token', sh.expire_token),
     url(r'^spotify/test_conn', sh.test_conn),
     url(r'^artist', sg.artist),
+    url(r'^genre', sg.genre),
     url(r'^release', sg.release),
     url(r'^track', sg.track),
     url(r'^week', sg.week),

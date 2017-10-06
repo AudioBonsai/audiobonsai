@@ -29,7 +29,7 @@
         </div>
         <div class="genres">
             {% for genre in release.genres.all() %}
-                <a href="genre?id={{ genre.name|urlencode() }}">{{ genre.name }}</a>
+                <a href="genre?name={{ genre.name|urlencode() }}">{{ genre.name }}</a>
             {% endfor %}
         </div>
         {% set recommendation_list = release.recommendation_list() %}

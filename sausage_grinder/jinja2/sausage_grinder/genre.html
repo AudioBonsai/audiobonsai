@@ -1,10 +1,10 @@
 {% import 'sausage_grinder/list_item_macros.html' as list_macros %}
 
 {% extends "sausage_grinder/base.html" %}
-{% block title %}{{ week.week_date }}{% endblock %}
+{% block title %}{{ genre.name }}{% endblock %}
 
 {% block content %}
-<div class='title'>{{ week.week_date }}</div>
+<div class='title'>{{ genre.name }}</div>
 
 <div id='releases'>
 {% for release in releases %}
@@ -15,7 +15,7 @@
 <div class="pagination">
     <span class="step-links">
         {% if releases.has_previous() %}
-            <a href="?id={{ week.week_date }}&page={{ releases.previous_page_number() }}">previous</a>
+            <a href="?name={{ genre.name }}&page={{ releases.previous_page_number() }}">previous</a>
         {% endif %}
 
         <span class="current">
@@ -23,7 +23,7 @@
         </span>
 
         {% if releases.has_next() %}
-            <a href="?id={{ week.week_date }}&page={{ releases.next_page_number() }}">next</a>
+            <a href="?name={{ genre.name }}&page={{ releases.next_page_number() }}">next</a>
         {% endif %}
     </span>
 </div>
