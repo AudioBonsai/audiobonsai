@@ -63,20 +63,22 @@ class Artist(models.Model):
 
 
     def set_popularity(self, pop, release_day=False):
-        self.popularity = pop
-        if release_day:
-            self.release_day_pop = pop
-        if pop > self.max_pop:
-            self.max_pop = pop
-        self.save()
+        if pop is not None:
+            self.popularity = pop
+            if release_day:
+                self.release_day_pop = pop
+            if pop > self.max_pop:
+                self.max_pop = pop
+            self.save()
 
     def set_followers(self, followers, release_day=False):
-        self.followers = followers
-        if release_day:
-            self.release_day_foll = followers
-        if followers > self.max_foll:
-            self.max_foll = followers
-        self.save()
+        if followers is not None:
+            self.followers = followers
+            if release_day:
+                self.release_day_foll = followers
+            if followers > self.max_foll:
+                self.max_foll = followers
+            self.save()
 
     def most_recent_release(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
