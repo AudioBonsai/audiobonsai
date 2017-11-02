@@ -13,58 +13,6 @@ from spotify_helper.helpers import get_spotify_conn
 # Register your models here.
 
 
-def handle_album_list(sp, query_list, all_eligible=False):
-    track_list = []
-    album_dets_list = sp.albums(query_list)
-    if album_dets_list is None:
-        return
-    for album_dets in album_dets_list[u'albums']:
-        if album_dets is None:
-            print('Unable to retrieve information on one of the provided albums.')
-            continue
-        try:
-            album = Release.objects.get(spotify_uri=album_dets[u'uri'])
-        except Release.MultipleObjectsReturned:
-            print('Repeat album? {}, SKIPPING'.format(album_dets[u'uri']))
-            continue
-        track_list += album.process(sp, album_dets, all_eligible)
-    #Track.objects.bulk_create(track_list)
-    return
-
-
-def handle_albums(sp, release_set, all_eligible=False):
-    candidate_list = Release.objects.filter(processed=False, week=release_set)
-    print('RELEASE SET: {}'.format(release_set.week_date))
-    print('CANDIDATE LIST LENGTH: {0:d}'.format(len(candidate_list)))
-    offset = 0
-    while offset < len(candidate_list):
-        sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
-        handle_album_list(sp, sp_uri_list, all_eligible)
-        offset += 20
-
-
-def handle_artist_list(sp, query_list):
-    artist_dets_list = sp.artists(query_list)
-    for artist_dets in artist_dets_list[u'artists']:
-        if artist_dets is None:
-            print('Unable to retrieve information on one of the provided albums.')
-            continue
-        try:
-            artist = Artist.objects.get(spotify_uri=artist_dets[u'uri'])
-            artist.process(sp, artist_dets)
-        except Artist.DoesNotExist:
-            print('Artist returned not in the database already, skipping.')
-            continue
-
-def handle_artists(sp):
-    candidate_list = Artist.objects.filter(processed=False)
-    offset = 0
-    while offset < len(candidate_list):
-        sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
-        handle_artist_list(sp, sp_uri_list)
-        offset += 20
-    return True
-
 class GenreAdmin(admin.ModelAdmin):
     list_display = ['name']
     fields = ['name']

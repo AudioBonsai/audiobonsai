@@ -35,13 +35,14 @@ def handle_albums(sp, all_eligible=False):
     candidate_list = Release.objects.filter(processed=False)
     print('CANDIDATE LIST LENGTH: {0:d}'.format(len(candidate_list)))
     offset = 0
+    batch_size = 20
     while offset < len(candidate_list):
-        sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
+        sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + batch_size]]
         handle_album_list(sp, sp_uri_list, all_eligible)
-        offset += 20
+        offset += batch_size
 
 
-def handle_artist_list(sp, query_list):
+def handle_artist_list(sp, query_list, week):
     artist_dets_list = sp.artists(query_list)
     for artist_dets in artist_dets_list[u'artists']:
         if artist_dets is None:
@@ -49,18 +50,19 @@ def handle_artist_list(sp, query_list):
             continue
         try:
             artist = Artist.objects.get(spotify_uri=artist_dets[u'uri'])
-            artist.process(sp, artist_dets)
+            artist.process(sp, artist_dets, week)
         except Artist.DoesNotExist:
             print('Artist returned not in the database already, skipping.')
             continue
 
-def handle_artists(sp):
+def handle_artists(sp, week):
     candidate_list = Artist.objects.filter(processed=False)
     offset = 0
+    batch_size = 50
     while offset < len(candidate_list):
-        sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + 20]]
-        handle_artist_list(sp, sp_uri_list)
-        offset += 20
+        sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + batch_size]]
+        handle_artist_list(sp, sp_uri_list, week)
+        offset += batch_size
     return True
 
 
@@ -86,14 +88,12 @@ def get_current_release_set():
 
 def parse_sorting_hat():
     print('{}: parse_sorting_hat'.format(datetime.now()))
-    print(settings.SPOTIFY_USERNAME)
     user = User.objects.get(username=settings.SPOTIFY_USERNAME)
-    print(user)
     spotify_user = SpotifyUser.objects.get(user=user)
-    print(spotify_user)
     sp = get_user_conn(spotify_user, '127.0.0.1:8000')
     if type(sp) is HttpResponseRedirect:
-        return sp
+        print('User {} not authed'.format(settings.SPOTIFY_USERNAME))
+        exit(-1)
 
     print('{}: Downloading Sorting Hat and creating releases'.format(datetime.now()))
     response = urlopen('http://everynoise.com/spotify_new_releases.html')
@@ -140,7 +140,7 @@ def parse_sorting_hat():
         print('{0:d} releases eligible to {1}'.format(len(Release.objects.filter(week=week)), week))
         print('{0:d} candidate artists'.format((len(Artist.objects.filter(processed=False)))))
         print('{}: handle_artists'.format(datetime.now()))
-        handle_artists(sp)
+        handle_artists(sp, week)
         print('{}: done'.format(datetime.now()))
     except SpotifyException:
         parse_sorting_hat()

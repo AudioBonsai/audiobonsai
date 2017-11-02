@@ -14,7 +14,7 @@
          included in <a href="week?id={{ release.week.week_date|urlencode() }}">
             {{ release.week.week_date }}</a>
         {% endif %}
-        </div>
+        </div><i>Released on {{ release.release_date }}</i>
         <div class="artist">
             {% set artist_list = release.artist_list() %}
             {% if artist_list|length > 0 %}

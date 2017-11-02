@@ -4,32 +4,64 @@
 {% block title %}Sausage Grinder{% endblock %}
 
 {% block content %}
-<div id='Most Popular'><h1>Most Popular Artists' Recent Releases</h1>
-<div id='most_popular'>
-{% for artist in most_popular %}
+<div id='Biggest Popularity Increase'><h1>Artists with biggest popularity change</h1>
+<div id='pop_increase'>
+{% for artist in pop_change %}
 {{ list_macros.release_list_item(artist.most_recent_release()) }}
 {% endfor %}
 </div>
+
+<div class="pop_pagination">
+    <span class="step-links">
+        {% if pop_change.has_previous() %}
+            <a href="?pop_page={{ pop_change.previous_page_number() }}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ pop_change.number }} of {{ pop_change.paginator.num_pages }}.
+        </span>
+
+        {% if pop_change.has_next() %}
+            <a href="?pop_page={{ pop_change.next_page_number() }}">next</a>
+        {% endif %}
+    </span>
+</div>
 </div>
 
-<div id='Most Followers'><h1>Most Followed Artists' Recent Releases</h1>
-<div id='most_followers'>
-{% for artist in most_followers %}
+<div id='Biggest Follower Increase'><h1>Artists with biggest follower increase</h1>
+<div id='follower_increase'>
+{% for artist in follower_change %}
 {{ list_macros.release_list_item(artist.most_recent_release()) }}
 {% endfor %}
 </div>
+
+<div class="foll_pagination">
+    <span class="step-links">
+        {% if follower_change.has_previous() %}
+            <a href="?foll_page={{ follower_change.previous_page_number() }}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ follower_change.number }} of {{ follower_change.paginator.num_pages }}.
+        </span>
+
+        {% if follower_change.has_next() %}
+            <a href="?foll_page={{ follower_change.next_page_number() }}">next</a>
+        {% endif %}
+    </span>
+</div>
 </div>
 
-<div id="fresh_cuts">
+<div id="weeks">
 {% for week in weeks %}
     <div><a href="week?id={{ week.week_date }}">{{ week.week_date }}</a></div>
 {% endfor %}
 </div>
 
-<div class="pagination">
+<div class="week_pagination">
     <span class="step-links">
         {% if weeks.has_previous() %}
-            <a href="?page={{ weeks.previous_page_number() }}">previous</a>
+            <a href="?week_page={{ weeks.previous_page_number() }}">previous</a>
         {% endif %}
 
         <span class="current">
@@ -37,7 +69,7 @@
         </span>
 
         {% if weeks.has_next() %}
-            <a href="?page={{ weeks.next_page_number() }}">next</a>
+            <a href="?week_page={{ weeks.next_page_number() }}">next</a>
         {% endif %}
     </span>
 </div>

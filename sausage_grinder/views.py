@@ -8,16 +8,32 @@ from sausage_grinder.models import ReleaseSet, Release, Artist, \
 
 
 def sausage_grinder_index(request):
-    page_no = request.GET.get('page')
-    p = Paginator(ReleaseSet.objects.order_by('-week_date'), 15)
+    week_page = request.GET.get('week_page')
+    pop_page = request.GET.get('pop_page')
+    foll_page = request.GET.get('foll_page')
+    week_p = Paginator(ReleaseSet.objects.order_by('-week_date'), 10)
     try:
-        weeks = p.page(page_no)
+        weeks = week_p.page(week_page)
     except PageNotAnInteger:
-        weeks = p.page(1)
+        weeks = week_p.page(1)
     except EmptyPage:
-        weeks = p.page(p.num_pages)
-    most_popular = Artist.objects.order_by('-popularity')[:5]
-    most_followers = Artist.objects.order_by('-followers')[:5]
+        weeks = week_p.page(week_p.num_pages)
+
+    pop_p = Paginator(Artist.objects.order_by('-pop_change'), 10)
+    try:
+        pop_change = pop_p.page(pop_page)
+    except PageNotAnInteger:
+        pop_change = pop_p.page(1)
+    except EmptyPage:
+        pop_change = pop_p.page(pop_p.num_pages)
+
+    foll_p = Paginator(Artist.objects.order_by('-followers_change', '-followers_change_pct'), 10)
+    try:
+        follower_change = foll_p.page(foll_page)
+    except PageNotAnInteger:
+        follower_change = foll_p.page(1)
+    except EmptyPage:
+        follower_change = foll_p.page(foll_p.num_pages)
     context = {
         #'release_count': Release.objects.count(),
         #'processed_releases': Release.objects.filter(processed=True).count(),
@@ -26,8 +42,8 @@ def sausage_grinder_index(request):
         #'artist_count': Artist.objects.count(),
         #'processed_artists': Artist.objects.filter(processed=True).count(),
         #'genre_count': Genre.objects.count(),
-        'most_popular': most_popular,
-        'most_followers': most_followers,
+        'pop_change': pop_change,
+        'follower_change': follower_change,
         'weeks': weeks,
     }
     template = loader.get_template('sausage_grinder/index.html')
@@ -42,16 +58,18 @@ def week(request):
         return HttpResponse('Well fuuuuuuuck.')
 
     page_no = request.GET.get('page')
-    p = Paginator(Release.objects.filter(week=week).order_by('-artist_popularity'), 10)
+    artists = Artist.objects.filter(weeks=week)
+    artists2 = artists.filter(followers__lte=150000).order_by('-followers_change')
+    p = Paginator(artists2, 10)
     try:
-        releases = p.page(page_no)
+        artists = p.page(page_no)
     except PageNotAnInteger:
-        releases = p.page(1)
+        artists = p.page(1)
     except EmptyPage:
-        releases = p.page(p.num_pages)
+        artists = p.page(p.num_pages)
     context = {
         'week': week,
-        'releases': releases
+        'artists': artists
 
     }
     template = loader.get_template('sausage_grinder/week.html')

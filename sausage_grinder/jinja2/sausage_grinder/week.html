@@ -6,24 +6,25 @@
 {% block content %}
 <div class='title'>{{ week.week_date }}</div>
 
-<div id='releases'>
-{% for release in releases %}
-{{ list_macros.release_list_item(release) }}
+
+<div id='artists'>
+{% for artist in artists %}
+{{ list_macros.release_list_item(artist.week_release(week)) }}
 {% endfor %}
 </div>
 
 <div class="pagination">
     <span class="step-links">
-        {% if releases.has_previous() %}
-            <a href="?id={{ week.week_date }}&page={{ releases.previous_page_number() }}">previous</a>
+        {% if artists.has_previous() %}
+            <a href="?id={{ week.week_date }}&page={{ artists.previous_page_number() }}">previous</a>
         {% endif %}
 
         <span class="current">
-            Page {{ releases.number }} of {{ releases.paginator.num_pages }}.
+            Page {{ artists.number }} of {{ artists.paginator.num_pages }}.
         </span>
 
-        {% if releases.has_next() %}
-            <a href="?id={{ week.week_date }}&page={{ releases.next_page_number() }}">next</a>
+        {% if artists.has_next() %}
+            <a href="?id={{ week.week_date }}&page={{ artists.next_page_number() }}">next</a>
         {% endif %}
     </span>
 </div>

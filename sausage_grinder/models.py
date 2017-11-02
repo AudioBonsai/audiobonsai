@@ -47,12 +47,25 @@ class Artist(models.Model):
     name = models.CharField(max_length=255, default='', blank=True)
     popularity = models.IntegerField(default=0)
     followers = models.IntegerField(default=0)
+    orig_date = models.DateField(auto_now=False, auto_now_add=False,
+                                 default=timezone.now)
+    orig_pop = models.IntegerField(null=True)
+    orig_followers = models.IntegerField(null=True)
+    pop_change = models.IntegerField(default=0)
+    pop_change_pct = models.IntegerField(default=0)
+    followers_change = models.IntegerField(default=0)
+    followers_change_pct = models.IntegerField(default=0)
     release_day_pop = models.IntegerField(default=0)
     release_day_foll = models.IntegerField(default=0)
+    pop_change_from_release = models.IntegerField(default=0)
+    pop_change_pct_from_release = models.IntegerField(default=0)
+    followers_change_from_release = models.IntegerField(default=0)
+    followers_change_pct_from_release = models.IntegerField(default=0)
     max_pop = models.IntegerField(default=0)
     max_foll = models.IntegerField(default=0)
     processed = models.BooleanField(default=False)
     genres = models.ManyToManyField(Genre)
+    weeks = models.ManyToManyField(ReleaseSet)
     image_640 = models.URLField(null=True)
     image_600 = models.URLField(null=True)
     image_300 = models.URLField(null=True)
@@ -62,23 +75,44 @@ class Artist(models.Model):
         return self.name
 
 
-    def set_popularity(self, pop, release_day=False):
+    def set_popularity(self, pop, followers, release_day=False):
+        if self.orig_pop is None:
+            self.orig_pop = pop
+            self.orig_followers = followers
         if pop is not None:
             self.popularity = pop
             if release_day:
                 self.release_day_pop = pop
             if pop > self.max_pop:
                 self.max_pop = pop
-            self.save()
-
-    def set_followers(self, followers, release_day=False):
         if followers is not None:
             self.followers = followers
             if release_day:
                 self.release_day_foll = followers
             if followers > self.max_foll:
                 self.max_foll = followers
-            self.save()
+
+        self.pop_change = self.popularity - self.orig_pop
+        try:
+            self.pop_change_pct = (self.pop_change/self.orig_pop)*100
+        except ZeroDivisionError:
+            self.pop_change_pct = (self.pop_change/1)*100
+        self.pop_change_from_release = self.popularity - self.release_day_pop
+        try:
+            self.pop_change_pct_from_release = (self.pop_change_from_release/self.release_day_pop)*100
+        except ZeroDivisionError:
+            self.pop_change_pct_from_release = (self.pop_change_from_release/1)*100
+        self.followers_change = self.followers - self.orig_followers
+        try:
+            self.followers_change_pct = (self.followers_change/self.orig_followers)*100
+        except ZeroDivisionError:
+            self.followers_change_pct = (self.followers_change/1)*100
+        self.followers_change_from_release = self.followers - self.release_day_foll
+        try:
+            self.followers_change_pct_from_release = (self.followers_change_from_release/self.release_day_foll)*100
+        except ZeroDivisionError:
+            self.followers_change_pct_from_release = (self.followers_change_from_release/1)*100
+        self.save()
 
     def most_recent_release(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
@@ -88,6 +122,11 @@ class Artist(models.Model):
             if release is None or artistrelease.release.week.week_date < release.week.week_date:
                 release = artistrelease.release
         return release
+
+    def week_release(self, week):
+        artistrelease_list = ArtistRelease.objects.filter(artist=self, release__week=week)
+        for artistrelease in artistrelease_list:
+            return artistrelease.release
 
     def release_list(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
@@ -105,12 +144,16 @@ class Artist(models.Model):
         #    formatted_string = formatted_list[0]
         #return formatted_string
 
-    def process(self, sp, artist_dets):
-        self.set_popularity(artist_dets[u'popularity'], True)
+    def process(self, sp, artist_dets, week):
+        self.set_popularity(artist_dets[u'popularity'], artist_dets[u'followers']['total'], True)
         #pprint(artist_dets)
-        self.set_followers(artist_dets[u'followers']['total'], True)
         if self.processed:
             return
+
+        self.orig_pop = artist_dets[u'popularity']
+        self.orig_followers = artist_dets[u'followers']['total']
+        self.orig_date = timezone.now()
+        self.weeks.add(week)
 
         for genre in artist_dets[u'genres']:
             try:
@@ -222,8 +265,11 @@ class Release(models.Model):
                                                           type=type)
         if len(artistrelease_list) == 0:
             return ''
-        formatted_list = ['<a href="artist?id={}">{}</a>'.format(
-                          artistrelease.artist_id, artistrelease.artist)
+        formatted_list = ['<a href="artist?id={}">{}</a> pop: {} (+{}), followers: {:,d} (+{:,d}) pct change: {}%'.format(
+                          artistrelease.artist_id, artistrelease.artist,
+                          artistrelease.artist.popularity, artistrelease.artist.pop_change,
+                          artistrelease.artist.followers, artistrelease.artist.followers_change,
+                          artistrelease.artist.followers_change_pct)
                           for artistrelease in artistrelease_list]
         if len(formatted_list) > 1:
             formatted_string = ' '.join([', '.join(formatted_list[:-1]), 'and',
