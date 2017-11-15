@@ -8,6 +8,8 @@ import re
 
 
 REMIX_REGEX = re.compile('.*remix.*', re.IGNORECASE)
+MIX_REGEX = re.compile('.*mix\)*$', re.IGNORECASE)
+RADIOEDIT_REGEX = re.compile('.*Radio Edit*$', re.IGNORECASE)
 REMASTER_REGEX = re.compile('.*remaster.*', re.IGNORECASE)
 REISSUE_REGEX = re.compile('.*reissue.*', re.IGNORECASE)
 
@@ -241,6 +243,10 @@ class Release(models.Model):
                                                  ('unheralded', 'Unheralded'),
                                                  ('underground', 'Underground'),
                                                  ('unknown', 'Unknown')))
+    release_type = models.CharField(max_length=255, default='',
+                                    choices=(('single', 'Single'),
+                                              ('ep', 'EP'),
+                                              ('album', 'Album')))
     eligible = models.BooleanField(default=True)
     processed = models.BooleanField(default=False)
     has_single = models.BooleanField(default=False)
@@ -297,6 +303,28 @@ class Release(models.Model):
         self.eligible = False
         self.processed = True
         self.save()
+
+
+    def set_release_type(self, album_dets, save=False):
+        if album_dets[u'album_type'] == 'album':
+            self.release_type = 'album'
+        else:
+            total_time = 0
+            for track in album_dets[u'tracks'][u'items']:
+                #pprint(track)
+                if not REMIX_REGEX.match(track[u'name']) and \
+                   not MIX_REGEX.match(track[u'name']) and \
+                   not RADIOEDIT_REGEX.match(track[u'name']):
+                    total_time += track[u'duration_ms']
+                    #print('{:d} added = {:d}'.format(track[u'duration_ms'], total_time))
+
+            if total_time <= 600000:
+                self.release_type = 'single'
+            else:
+                self.release_type = 'ep'
+
+        if save:
+            self.save()
 
     def check_eligility(self, album_dets):
         if album_dets[u'release_date_precision'] != 'day' or \
@@ -396,6 +424,7 @@ class Release(models.Model):
             track_obj.process_track(track, self)
             track_list.append(track_obj)
         '''
+        self.set_release_type(album_dets)
         self.processed = True
         self.save()
         return track_list
