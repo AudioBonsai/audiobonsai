@@ -54,6 +54,8 @@ def build_artists_dict(week):
             'foll': artist.followers,
             'foll_change': artist.followers_change_from_release,
             'foll_change_pct': artist.followers_change_pct_from_release,
+            'release_day_foll': artist.release_day_foll,
+            'release_day_pop': artist.release_day_pop,
             'release': release
         }
     return artists_dict
@@ -81,33 +83,45 @@ if __name__ == '__main__':
     weeks = ReleaseSet.objects.all().order_by('-week_date')
     week = weeks[0]
     artists_df = build_artists_df(week)
-    top100_df = artists_df.sort_values(by='final_score', ascending=False)
-    top100_df = top100_df.drop_duplicates(subset='release', keep='first').head(200)
-    print(top100_df)
+    artists_df['category'] = pd.cut(artists_df['release_day_pop'], 10)
+    #artists_df['category'] = pd.qcut(artists_df['release_day_foll'], 5, duplicates='drop')
+    #top100_df = artists_df.sort_values(by='final_score', ascending=False)
+    #top100_df = top100_df.drop_duplicates(subset='release', keep='first').head(200)
+    #print(top100_df)
 
     playlist_name = 'Fresh Cuts: {}'.format(week.week_date.strftime('%b %d, %Y'))
     user = User.objects.get(username=settings.SPOTIFY_USERNAME)
     spotify_user = SpotifyUser.objects.get(user=user)
     track_list = []
     sp = get_user_conn(spotify_user, '127.0.0.1:8000')
-    for release in top100_df['release'].values:
-        try:
-            album_dets = sp.album(release.spotify_uri)
-        except requests.exceptions.ConnectionError:
-            continue
-        print('#{:03d} {:6s}: {}'.format(len(track_list)+1, release.release_type, release))
-        if album_dets['type'] == 'single':
-            track_list.append(album_dets['tracks']['items'][0]['uri'])
-        else:
-            track_dict = {}
-            for track in album_dets['tracks']['items'][:5]:
-                if track['duration_ms'] not in track_dict.keys():
-                    track_dict[track['duration_ms']] = []
-                track_dict[track['duration_ms']].append(track['uri'])
-            track_times = sorted(list(track_dict.keys()))
-            median_time_key = track_times[int(len(track_times)/2)]
-            track_list.append(track_dict[median_time_key][0])
+    for category in sorted(artists_df['category'].unique()):
+        category_df = artists_df[artists_df['category'] == category]
+        category_df = category_df.sort_values(by='final_score', ascending=False)
+        category_df = category_df.drop_duplicates(subset='release', keep='first')
+        print('{}: Min {:10d}, Max {:10d}, Count {:10d}'.format(category, category_df['release_day_pop'].min(), category_df['release_day_pop'].max(), len(category_df)))
+        category_df = category_df.head(20)
+        #print(category_df)
+        #print('{}: Min {:10d}, Max {:10d}, Count {:10d}'.format(category, category_df['release_day_foll'].min(), category_df['release_day_foll'].max(), len(category_df)))
 
+        #for release in top100_df['release'].values:
+        for release in category_df['release'].values:
+            try:
+                album_dets = sp.album(release.spotify_uri)
+            except requests.exceptions.ConnectionError:
+                continue
+            print('#{:03d} {:6s}: {}'.format(len(track_list)+1, release.release_type, release))
+            if album_dets['type'] == 'single':
+                track_list.append(album_dets['tracks']['items'][0]['uri'])
+            else:
+                track_dict = {}
+                for track in album_dets['tracks']['items'][:5]:
+                    if track['duration_ms'] not in track_dict.keys():
+                        track_dict[track['duration_ms']] = []
+                    track_dict[track['duration_ms']].append(track['uri'])
+                track_times = sorted(list(track_dict.keys()))
+                median_time_key = track_times[int(len(track_times)/2)]
+                track_list.append(track_dict[median_time_key][0])
+    
     #playlist = sp.user_playlist_create(user, playlist_name)
     #pprint(playlist)
     sausage_grinder_playlist = 'spotify:user:audiobonsai:playlist:6z8m6hjBXxClAZt3oYONCa'

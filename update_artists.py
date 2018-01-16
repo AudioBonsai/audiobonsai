@@ -72,7 +72,7 @@ def update_artists():
         exit(-1)
 
     weeks = ReleaseSet.objects.all().order_by('-week_date')
-    for week in weeks[:4]:
+    for week in weeks[:1]:
         process_week(week, sp)
 
 if __name__ == '__main__':

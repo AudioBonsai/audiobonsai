@@ -104,16 +104,17 @@ class Artist(models.Model):
             self.pop_change_pct_from_release = (self.pop_change_from_release/self.release_day_pop)*100
         except ZeroDivisionError:
             self.pop_change_pct_from_release = (self.pop_change_from_release/1)*100
-        self.followers_change = self.followers - self.orig_followers
-        try:
-            self.followers_change_pct = (self.followers_change/self.orig_followers)*100
-        except ZeroDivisionError:
-            self.followers_change_pct = (self.followers_change/1)*100
-        self.followers_change_from_release = self.followers - self.release_day_foll
-        try:
-            self.followers_change_pct_from_release = (self.followers_change_from_release/self.release_day_foll)*100
-        except ZeroDivisionError:
-            self.followers_change_pct_from_release = (self.followers_change_from_release/1)*100
+        if self.followers is not None and self.orig_followers is not None:
+            self.followers_change = self.followers - self.orig_followers
+            try:
+                self.followers_change_pct = (self.followers_change/self.orig_followers)*100
+            except ZeroDivisionError:
+                self.followers_change_pct = (self.followers_change/1)*100
+            self.followers_change_from_release = self.followers - self.release_day_foll
+            try:
+                self.followers_change_pct_from_release = (self.followers_change_from_release/self.release_day_foll)*100
+            except ZeroDivisionError:
+                self.followers_change_pct_from_release = (self.followers_change_from_release/1)*100
         self.save()
 
     def most_recent_release(self, type='PRIMARY'):
