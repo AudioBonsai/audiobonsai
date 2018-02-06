@@ -83,6 +83,8 @@ if __name__ == '__main__':
     weeks = ReleaseSet.objects.all().order_by('-week_date')
     week = weeks[0]
     artists_df = build_artists_df(week)
+    artists_df = artists_df.sort_values(by='final_score', ascending=False)
+    artists_df = artists_df.drop_duplicates(subset='release', keep='first')
     artists_df['category'] = pd.cut(artists_df['release_day_pop'], 10)
     #artists_df['category'] = pd.qcut(artists_df['release_day_foll'], 5, duplicates='drop')
     #top100_df = artists_df.sort_values(by='final_score', ascending=False)
@@ -97,8 +99,6 @@ if __name__ == '__main__':
     category_num = 1
     for category in sorted(artists_df['category'].unique()):
         category_df = artists_df[artists_df['category'] == category]
-        category_df = category_df.sort_values(by='final_score', ascending=False)
-        category_df = category_df.drop_duplicates(subset='release', keep='first')
         print('\nCategory {:d}'.format(category_num))
         print('{}: Min {:10d}, Max {:10d}, Count {:10d}'.format(category, category_df['release_day_pop'].min(), category_df['release_day_pop'].max(), len(category_df)))
         category_df = category_df.head(20)
@@ -125,7 +125,7 @@ if __name__ == '__main__':
                 track_list.append(track_dict[median_time_key][0])
         category_num += 1
 
-    '''
+
     #playlist = sp.user_playlist_create(user, playlist_name)
     #pprint(playlist)
     sausage_grinder_playlist = 'spotify:user:audiobonsai:playlist:6z8m6hjBXxClAZt3oYONCa'
@@ -140,4 +140,3 @@ if __name__ == '__main__':
             playlist_tracks = sp.user_playlist_add_tracks(user, sausage_grinder_playlist, track_list[offset:offset + batch_size])
         offset += batch_size
         pprint(playlist_tracks)
-    '''

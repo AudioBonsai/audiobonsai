@@ -95,6 +95,8 @@ def parse_sorting_hat():
         print('User {} not authed'.format(settings.SPOTIFY_USERNAME))
         exit(-1)
 
+    week = get_current_release_set()
+
     print('{}: Downloading Sorting Hat and creating releases'.format(datetime.now()))
     response = urlopen('http://everynoise.com/spotify_new_releases.html')
     html = response.read().decode("utf-8")
@@ -106,7 +108,6 @@ def parse_sorting_hat():
                  '([0-9]+)</span>'
     group_string = re.compile(group_text)
     candidate_list = []
-    week = get_current_release_set()
     print(week.week_date.strftime('%A, %B %d, %Y'))
 
     for release in releases:
@@ -132,18 +133,38 @@ def parse_sorting_hat():
     print('{0:d} releases processed'.format(len(candidate_list)))
     print('{0:d} candidate releases'.format(len(candidate_list)))
 
-    try:
-        print('{}: handle_albums'.format(datetime.now()))
-        handle_albums(sp, True)
-        print('{}: delete_ineligible_releases'.format(datetime.now()))
-        week.delete_ineligible_releases()
-        print('{0:d} releases eligible to {1}'.format(len(Release.objects.filter(week=week)), week))
-        print('{0:d} candidate artists'.format((len(Artist.objects.filter(processed=False)))))
-        print('{}: handle_artists'.format(datetime.now()))
-        handle_artists(sp, week)
+    done = False
+    while not done:
+        try:
+            print('{}: handle_albums'.format(datetime.now()))
+            handle_albums(sp, True)
+        except SpotifyException:
+            sp = get_user_conn(spotify_user, '127.0.0.1:8000')
+            continue
+        done = True
+
+    done = False
+    while not done:
+        try:
+            print('{}: delete_ineligible_releases'.format(datetime.now()))
+            week.delete_ineligible_releases()
+        except SpotifyException:
+            sp = get_user_conn(spotify_user, '127.0.0.1:8000')
+            continue
+        done = True
+    done = False
+    while not done:
+        try:
+            print('{0:d} releases eligible to {1}'.format(len(Release.objects.filter(week=week)), week))
+            print('{0:d} candidate artists'.format((len(Artist.objects.filter(processed=False)))))
+            print('{}: handle_artists'.format(datetime.now()))
+            handle_artists(sp, week)
+        except SpotifyException:
+            sp = get_user_conn(spotify_user, '127.0.0.1:8000')
+            continue
         print('{}: done'.format(datetime.now()))
-    except SpotifyException:
-        parse_sorting_hat()
+        done = True
+
     return
 
 if __name__ == '__main__':
