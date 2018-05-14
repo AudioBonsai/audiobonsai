@@ -115,7 +115,7 @@ class Artist(models.Model):
                 self.followers_change_pct_from_release = (self.followers_change_from_release/self.release_day_foll)*100
             except ZeroDivisionError:
                 self.followers_change_pct_from_release = (self.followers_change_from_release/1)*100
-        self.save()
+            self.save()
 
     def most_recent_release(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
@@ -148,6 +148,7 @@ class Artist(models.Model):
         #return formatted_string
 
     def process(self, sp, artist_dets, week):
+        self.weeks.add(week)
         self.set_popularity(artist_dets[u'popularity'], artist_dets[u'followers']['total'], True)
         #pprint(artist_dets)
         if self.processed:
@@ -156,7 +157,6 @@ class Artist(models.Model):
         self.orig_pop = artist_dets[u'popularity']
         self.orig_followers = artist_dets[u'followers']['total']
         self.orig_date = timezone.now()
-        self.weeks.add(week)
 
         for genre in artist_dets[u'genres']:
             try:
@@ -339,7 +339,6 @@ class Release(models.Model):
         elif REMIX_REGEX.match(self.title) or REISSUE_REGEX.match(self.title) or REMASTER_REGEX.match(self.title):
             self.mark_ineligible()
             return False
-        '''
         elif album_dets[u'album_type'] == 'single' and len(album_dets[u'tracks'][u'items']) < 4:
             total_time = 0
             for track in album_dets[u'tracks'][u'items']:
@@ -349,7 +348,6 @@ class Release(models.Model):
             if total_time < 900000:
                 self.mark_ineligible()
                 return (False, None)
-        '''
         return True
 
     def determine_popularity(self):
@@ -385,7 +383,7 @@ class Release(models.Model):
             return track_list
         try:
             self.title = album_dets[u'name']
-            print(album_dets[u'name'])
+            #print(album_dets[u'name'])
         except UnicodeEncodeError:
             self.mark_ineligible()
             return track_list
@@ -399,8 +397,10 @@ class Release(models.Model):
             except Artist.DoesNotExist:
                 artist_obj = Artist(spotify_uri=artist[u'uri'],
                                     name=artist[u'name'])
-                print('- ' + artist[u'name'])
                 artist_obj.save()
+                #print('- ' + artist[u'name'])
+            artist_obj.weeks.add(self.week)
+            artist_obj.save()
             ArtistRelease.objects.create(artist=artist_obj, release=self)
         for genre in album_dets[u'genres']:
             try:

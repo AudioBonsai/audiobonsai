@@ -3,7 +3,7 @@ from datetime import datetime
 from django.contrib.auth.models import User
 from django.http import HttpResponseRedirect
 import json
-from sausage_grinder.models import Artist, ReleaseSet
+from sausage_grinder.models import Artist, ArtistRelease, Release, ReleaseSet
 from spotify_helper.models import SpotifyUser
 from spotipy import SpotifyException
 from spotify_helper.helpers import get_user_conn
@@ -45,6 +45,22 @@ def handle_artist_list(sp, query_list):
 
 
 def process_week(week, sp):
+    '''
+    release_list = Release.objects.filter(week=week)
+    print ('{}: found {} releases from week {}...'.format(datetime.now(), len(release_list), week.week_date))
+    offset = 0
+    artist_count = 0
+    for release in release_list:
+        artist_list = ArtistRelease.objects.filter(release=release)
+        for artist_release in artist_list:
+            artist = artist_release.artist
+            artist.weeks.add(week)
+            artist.save()
+            artist_count += 1
+        offset += 1
+        if offset%1000==0:
+            print('{}: -> {} releases updated ({} artists)'.format(datetime.now(), offset, artist_count))
+    '''
     candidate_list = Artist.objects.filter(weeks=week)
     print('{}: updating {} artists from week {}...'.format(datetime.now(), len(candidate_list), week.week_date))
     batch_size = 50

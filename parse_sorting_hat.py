@@ -39,6 +39,8 @@ def handle_albums(sp, all_eligible=False):
     while offset < len(candidate_list):
         sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + batch_size]]
         handle_album_list(sp, sp_uri_list, all_eligible)
+        if offset%1000==0:
+            print('{}: -> {} albums processed'.format(datetime.now(), offset))
         offset += batch_size
 
 
@@ -56,12 +58,14 @@ def handle_artist_list(sp, query_list, week):
             continue
 
 def handle_artists(sp, week):
-    candidate_list = Artist.objects.filter(processed=False)
+    candidate_list = Artist.objects.filter(weeks=week)
     offset = 0
     batch_size = 50
     while offset < len(candidate_list):
         sp_uri_list = [candidate.spotify_uri for candidate in candidate_list[offset:offset + batch_size]]
         handle_artist_list(sp, sp_uri_list, week)
+        if offset%1000==0:
+            print('{}: -> {} artists processed'.format(datetime.now(), offset))
         offset += batch_size
     return True
 
@@ -137,7 +141,7 @@ def parse_sorting_hat():
     while not done:
         try:
             print('{}: handle_albums'.format(datetime.now()))
-            handle_albums(sp, True)
+            handle_albums(sp, False)
         except SpotifyException:
             sp = get_user_conn(spotify_user, '127.0.0.1:8000')
             continue
@@ -152,11 +156,12 @@ def parse_sorting_hat():
             sp = get_user_conn(spotify_user, '127.0.0.1:8000')
             continue
         done = True
+    
     done = False
     while not done:
         try:
             print('{0:d} releases eligible to {1}'.format(len(Release.objects.filter(week=week)), week))
-            print('{0:d} candidate artists'.format((len(Artist.objects.filter(processed=False)))))
+            print('{0:d} candidate artists'.format((len(Artist.objects.filter(weeks=week)))))
             print('{}: handle_artists'.format(datetime.now()))
             handle_artists(sp, week)
         except SpotifyException:
