@@ -20,7 +20,6 @@ class Genre(models.Model):
     def __str__(self):
         return self.name
 
-
 class Artist(models.Model):
     spotify_uri = models.CharField(max_length=255, default='')
     name = models.CharField(max_length=255, default='', blank=True)
@@ -28,10 +27,6 @@ class Artist(models.Model):
     followers = models.IntegerField(default=0)
     processed = models.BooleanField(default=False)
     genres = models.ManyToManyField(Genre)
-    image_640 = models.URLField(null=True)
-    image_600 = models.URLField(null=True)
-    image_300 = models.URLField(null=True)
-    image_64 = models.URLField(null=True)
 
     def __str__(self):
         return self.name

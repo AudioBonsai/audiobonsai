@@ -2,7 +2,7 @@ from django.urls import path
 
 from . import views as sg
 
-urlpatternss = [
+urlpatterns = [
     path('artist', sg.artist),
     path('genre', sg.genre),
     path('release', sg.release),

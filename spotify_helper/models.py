@@ -9,6 +9,3 @@ class SpotifyUser(models.Model):
     spotify_token = models.TextField(blank=True, default='')
     return_path = models.CharField(max_length=255, blank=True, default='')
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-
-
-
