@@ -6,7 +6,7 @@ from urllib.request import urlopen
 from django.contrib.auth.models import User
 from django.http import HttpResponseRedirect
 from pprint import pprint
-from sausage_grinder.models import ReleaseSet, Release, Artist
+from sausage_grinder.models import Release, Artist
 from spotify_helper.models import SpotifyUser
 from spotipy import SpotifyException
 from spotify_helper.helpers import get_user_conn
@@ -46,7 +46,7 @@ def handle_albums(sp, all_eligible=False):
         offset += batch_size
 
 
-def handle_artist_list(sp, query_list, week):
+def handle_artist_list(sp, query_list):
     artist_dets_list = sp.artists(query_list)
     for artist_dets in artist_dets_list[u'artists']:
         if artist_dets is None:
@@ -55,44 +55,24 @@ def handle_artist_list(sp, query_list, week):
             continue
         try:
             artist = Artist.objects.get(spotify_uri=artist_dets[u'uri'])
-            artist.process(sp, artist_dets, week)
+            artist.process(sp, artist_dets)
         except Artist.DoesNotExist:
             print('Artist returned not in the database already, skipping.')
             continue
 
 
-def handle_artists(sp, week):
-    candidate_list = Artist.objects.filter(weeks=week)
+def handle_artists(sp):
+    candidate_list = Artist.objects.all()
     offset = 0
     batch_size = 50
     while offset < len(candidate_list):
         sp_uri_list = [candidate.spotify_uri for candidate in
                        candidate_list[offset:offset + batch_size]]
-        handle_artist_list(sp, sp_uri_list, week)
+        handle_artist_list(sp, sp_uri_list)
         if offset % 1000 == 0:
             print('{}: -> {} artists processed'.format(datetime.now(), offset))
         offset += batch_size
     return True
-
-
-def get_current_release_set():
-    prev_friday_adjustment = {
-        0: timedelta(days=3),
-        1: timedelta(days=4),
-        2: timedelta(days=5),
-        3: timedelta(days=6),
-        4: timedelta(days=0),
-        5: timedelta(days=1),
-        6: timedelta(days=2)
-    }
-    prev_friday = prev_friday = date.today() - \
-        prev_friday_adjustment[date.today().weekday()]
-    try:
-        week = ReleaseSet.objects.get(week_date=prev_friday)
-    except ReleaseSet.DoesNotExist:
-        week = ReleaseSet(week_date=prev_friday)
-        week.save()
-    return week
 
 
 def parse_sorting_hat():
@@ -103,8 +83,6 @@ def parse_sorting_hat():
     if type(sp) is HttpResponseRedirect:
         print('User {} not authed'.format(settings.SPOTIFY_USERNAME))
         exit(-1)
-
-    week = get_current_release_set()
 
     print('{}: Downloading Sorting Hat and creating \
                releases'.format(datetime.now()))
@@ -119,7 +97,6 @@ def parse_sorting_hat():
                  '([0-9]+)</span>'
     group_string = re.compile(group_text)
     candidate_list = []
-    print(week.week_date.strftime('%A, %B %d, %Y'))
 
     for release in releases:
         for match in match_string.findall(release):
@@ -131,7 +108,7 @@ def parse_sorting_hat():
             except Release.MultipleObjectsReturned:
                 pass
             except Release.DoesNotExist:
-                candidate = Release(week=week, spotify_uri=bits.group(2),
+                candidate = Release(spotify_uri=bits.group(2),
                                     sorting_hat_track_num=int(bits.group(3)))
                 if bits.group(1) != '-':
                     candidate.sorting_hat_rank = int(bits.group(1))
@@ -144,6 +121,7 @@ def parse_sorting_hat():
     print('{0:d} releases processed'.format(len(candidate_list)))
     print('{0:d} candidate releases'.format(len(candidate_list)))
 
+    '''
     done = False
     while not done:
         try:
@@ -158,7 +136,6 @@ def parse_sorting_hat():
     while not done:
         try:
             print('{}: delete_ineligible_releases'.format(datetime.now()))
-            week.delete_ineligible_releases()
         except SpotifyException:
             sp = get_user_conn(spotify_user, '127.0.0.1:8000')
             continue
@@ -167,18 +144,14 @@ def parse_sorting_hat():
     done = False
     while not done:
         try:
-            print('{0:d} releases eligible to {1}'.format(
-                  len(Release.objects.filter(week=week)), week))
-            print('{0:d} candidate artists'.format((
-                  len(Artist.objects.filter(weeks=week)))))
             print('{}: handle_artists'.format(datetime.now()))
-            handle_artists(sp, week)
+            handle_artists(sp)
         except SpotifyException:
             sp = get_user_conn(spotify_user, '127.0.0.1:8000')
             continue
         print('{}: done'.format(datetime.now()))
         done = True
-
+    '''
     return
 
 if __name__ == '__main__':

@@ -14,25 +14,6 @@ REMASTER_REGEX = re.compile('.*remaster.*', re.IGNORECASE)
 REISSUE_REGEX = re.compile('.*reissue.*', re.IGNORECASE)
 
 
-class ReleaseSet(models.Model):
-    week_date = models.DateField(auto_now=False, auto_now_add=False,
-                                 default=timezone.now)
-    sampler_uri = models.CharField(max_length=255, default='', blank=True)
-    jesse_vote_uri = models.CharField(max_length=255, default='', blank=True)
-    moksha_vote_uri = models.CharField(max_length=255, default='', blank=True)
-    adam_vote_uri = models.CharField(max_length=255, default='', blank=True)
-
-    def delete_ineligible_releases(self):
-        ineligible_list = Release.objects.filter(eligible=False, week=self)
-        [ineligible.delete() for ineligible in ineligible_list]
-
-    def __str__(self):
-        return self.week_date.strftime('%c')
-
-    def __repr__(self):
-        return self.week_date.strftime('%c')
-
-
 class Genre(models.Model):
     name = models.CharField(max_length=255, primary_key=True)
 
@@ -47,7 +28,6 @@ class Artist(models.Model):
     followers = models.IntegerField(default=0)
     processed = models.BooleanField(default=False)
     genres = models.ManyToManyField(Genre)
-    weeks = models.ManyToManyField(ReleaseSet)
     image_640 = models.URLField(null=True)
     image_600 = models.URLField(null=True)
     image_300 = models.URLField(null=True)
@@ -70,23 +50,16 @@ class Artist(models.Model):
         release = None
         for artistrelease in artistrelease_list:
             if release is None or \
-               artistrelease.release.week.week_date < release.week.week_date:
+               artistrelease.release.release_date < release.release_date:
                 release = artistrelease.release
         return release
-
-    def week_release(self, week):
-        artistrelease_list = ArtistRelease.objects.filter(artist=self,
-                                                          release__week=week)
-        for artistrelease in artistrelease_list:
-            return artistrelease.release
 
     def release_list(self, type='PRIMARY'):
         artistrelease_list = ArtistRelease.objects.filter(artist=self,
                                                           type=type)
         return [artistrelease.release for artistrelease in artistrelease_list]
 
-    def process(self, sp, artist_dets, week):
-        self.weeks.add(week)
+    def process(self, sp, artist_dets):
         self.set_popularity(artist_dets[u'popularity'],
                             artist_dets[u'followers']['total'])
         # pprint(artist_dets)
@@ -147,7 +120,6 @@ class Release(models.Model):
     is_freshcut = models.BooleanField(default=False)
     spotify_uri = models.CharField(max_length=255, default='')
     batch = models.IntegerField(default=0)
-    week = models.ForeignKey(ReleaseSet, on_delete=models.CASCADE)
     genres = models.ManyToManyField(Genre, blank=True)
     artists = models.ManyToManyField(Artist, through='ArtistRelease',
                                      through_fields=('release', 'artist'))
@@ -225,10 +197,6 @@ class Release(models.Model):
              'US' not in album_dets[u'available_markets']):
             self.mark_ineligible()
             return False
-        elif self.release_date > self.week.week_date or \
-                self.week.week_date - self.release_date > timedelta(days=7):
-            self.mark_ineligible()
-            return False
         elif REMIX_REGEX.match(self.title) or \
                 REISSUE_REGEX.match(self.title) or \
                 REMASTER_REGEX.match(self.title):
@@ -295,8 +263,6 @@ class Release(models.Model):
                                     name=artist[u'name'])
                 artist_obj.save()
                 # print('- ' + artist[u'name'])
-            artist_obj.weeks.add(self.week)
-            artist_obj.save()
             ArtistRelease.objects.create(artist=artist_obj, release=self)
         for genre in album_dets[u'genres']:
             try:
