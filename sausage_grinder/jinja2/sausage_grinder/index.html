@@ -4,73 +4,27 @@
 {% block title %}Sausage Grinder{% endblock %}
 
 {% block content %}
-<div id='Biggest Popularity Increase'><h1>Artists with biggest popularity change</h1>
-<div id='pop_increase'>
-{% for artist in pop_change %}
+<div id='Artists'><h1>Artists</h1>
+{% for artist in artists %}
 {{ list_macros.release_list_item(artist.most_recent_release()) }}
 {% endfor %}
 </div>
 
-<div class="pop_pagination">
+<div class="artist_pagination">
     <span class="step-links">
-        {% if pop_change.has_previous() %}
-            <a href="?pop_page={{ pop_change.previous_page_number() }}">previous</a>
+        {% if artists.has_previous() %}
+            <a href="?page={{ artists.previous_page_number() }}">previous</a>
         {% endif %}
 
         <span class="current">
-            Page {{ pop_change.number }} of {{ pop_change.paginator.num_pages }}.
+            Page {{ artists.number }} of {{ artists.paginator.num_pages }}.
         </span>
 
-        {% if pop_change.has_next() %}
-            <a href="?pop_page={{ pop_change.next_page_number() }}">next</a>
+        {% if artists.has_next() %}
+            <a href="?page={{ artists.next_page_number() }}">next</a>
         {% endif %}
     </span>
 </div>
 </div>
 
-<div id='Biggest Follower Increase'><h1>Artists with biggest follower increase</h1>
-<div id='follower_increase'>
-{% for artist in follower_change %}
-{{ list_macros.release_list_item(artist.most_recent_release()) }}
-{% endfor %}
-</div>
-
-<div class="foll_pagination">
-    <span class="step-links">
-        {% if follower_change.has_previous() %}
-            <a href="?foll_page={{ follower_change.previous_page_number() }}">previous</a>
-        {% endif %}
-
-        <span class="current">
-            Page {{ follower_change.number }} of {{ follower_change.paginator.num_pages }}.
-        </span>
-
-        {% if follower_change.has_next() %}
-            <a href="?foll_page={{ follower_change.next_page_number() }}">next</a>
-        {% endif %}
-    </span>
-</div>
-</div>
-
-<div id="weeks">
-{% for week in weeks %}
-    <div><a href="week?id={{ week.week_date }}">{{ week.week_date }}</a></div>
-{% endfor %}
-</div>
-
-<div class="week_pagination">
-    <span class="step-links">
-        {% if weeks.has_previous() %}
-            <a href="?week_page={{ weeks.previous_page_number() }}">previous</a>
-        {% endif %}
-
-        <span class="current">
-            Page {{ weeks.number }} of {{ weeks.paginator.num_pages }}.
-        </span>
-
-        {% if weeks.has_next() %}
-            <a href="?week_page={{ weeks.next_page_number() }}">next</a>
-        {% endif %}
-    </span>
-</div>
 {% endblock %}

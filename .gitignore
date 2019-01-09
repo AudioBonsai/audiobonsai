@@ -1,6 +1,8 @@
 # Ignore credentials
 creds.py
 settings.py
+data/
+migrations/
 
 # Ignore local Django DB
 db.sqlite3
