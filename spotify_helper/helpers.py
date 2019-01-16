@@ -13,8 +13,9 @@ def get_spotify_conn(request):
         auth_user.return_path = return_path
         auth_user.save()
         return get_user_conn(auth_user, request.get_host())
-    except:
+    except Exception as e:
         print('USER EXCEPTION. DAFUQ?')
+        print(e)
         auth_user = SpotifyUser(user=request.user, return_path=return_path)
         auth_user.save()
         return HttpResponseRedirect(
