@@ -2,10 +2,12 @@ import codecs
 import os
 import re
 import sqlite3
-import urllib
+import spotipy
 
+from audiobonsai import settings
 from datetime import datetime
 from pathlib import Path
+from pprint import pprint
 from sqlite3 import Error as sqlError
 from urllib.request import urlopen
 
@@ -113,6 +115,13 @@ def insert_candidates(conn, candidate_list):
 
 
 if __name__ == '__main__':
+    token = spotipy.util.prompt_for_user_token(
+      settings.SPOTIFY_USERNAME, settings.SPOTIFY_SCOPE,
+      client_id=settings.SPOTIPY_CLIENT_ID,
+      client_secret=settings.SPOTIPY_CLIENT_SECRET,
+      redirect_uri=settings.SPOTIPY_REDIRECT_URI)
+    sp = spotipy.Spotify(auth=token)
+    
     today_dir = todays_dir()
     html = download_everynoise(today_dir)
     candidates = find_candidates(html)
