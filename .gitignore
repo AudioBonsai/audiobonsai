@@ -3,6 +3,7 @@ creds.py
 settings.py
 data/
 migrations/
+spotipy_repo/
 
 # Ignore local Django DB
 db.sqlite3
