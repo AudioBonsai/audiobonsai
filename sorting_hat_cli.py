@@ -26,10 +26,20 @@ GROUP_TEXT = 'spotify:album:.* .* albumid=(spotify:album:.*) nolink=true ' \
 
 
 def log(descriptor):
+    """
+    Yes... I should use a standard logging library, but... here we are.
+
+    Keyword arguments:
+    descriptor -- the description of the event being logged
+    """
     print('{}: {}'.format(datetime.now().strftime("%H:%M:%S"), descriptor))
 
 
 def get_spotify_conn():
+    """
+    Use the spotipy utility for command line Spotify oauth All values
+    assumed stored in the settings for now... should paramaterize them
+    """
     token = sp_util.prompt_for_user_token(
       settings.SPOTIFY_USERNAME, settings.SPOTIFY_SCOPE,
       client_id=settings.SPOTIPY_CLIENT_ID,
@@ -39,6 +49,9 @@ def get_spotify_conn():
 
 
 def todays_dir():
+    """
+    Create the data dir for taday
+    """
     log('Creating data dir')
     data_dir = Path('./data')
     if not data_dir.is_dir():
@@ -53,6 +66,13 @@ def todays_dir():
 
 
 def download_everynoise(today_dir):
+    """
+    Get the current version of everynoise's release listing unless we already
+    got it for the day in question
+
+    Keyword arguments:
+    today_dir -- path to the the directory for "today"
+    """
     log('Retrieving everynoise')
     everynoise_file = Path(os.path.join(today_dir, 'everynoise.html'))
     if everynoise_file.exists():
@@ -72,6 +92,12 @@ def download_everynoise(today_dir):
 
 
 def find_albums(html):
+    """
+    Parse the HTML and extract spotify uris for albums
+
+    Keyword arguments:
+    html -- the html text to parse
+    """
     today = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
     match_string = re.compile('(spotify:album:.*)')
     group_string = re.compile(GROUP_TEXT)
@@ -93,7 +119,10 @@ def find_albums(html):
     return candidate_list
 
 
-def create_connection(today_dir):
+def create_connection():
+    """
+    Create and/or connect to a sqlite database
+    """
     log('Creating database')
     try:
         conn = sqlite3.connect(Path(os.path.join('./data', 'db.sqlite3')))
@@ -201,7 +230,7 @@ if __name__ == '__main__':
         print(type(e))
         raise(e)
 
-    db_conn = create_connection(today_dir)
+    db_conn = create_connection()
     # Load albums into database
     try:
         cursor = db_conn.cursor()
