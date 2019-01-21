@@ -15,14 +15,31 @@ from urllib.request import urlopen
 
 
 EVERYNOISE_URL = 'http://everynoise.com/spotify_new_releases.html'
-CREATE_CANDIDATE_TABLE = """ CREATE TABLE IF NOT EXISTS albums (
+CREATE_ALBUM_TABLE = """ CREATE TABLE IF NOT EXISTS albums (
                                 spotify_uri text PRIMARY KEY,
                                 add_date DATE,
                                 json_text TEXT,
                                 artists_extracted BOOLEAN default FALSE
                              ) """
+CREATE_ARTIST_TABLE = """ CREATE TABLE IF NOT EXISTS artists (
+                                spotify_uri text PRIMARY KEY,
+                                add_date DATE,
+                                json_text TEXT,
+                                last_json_date DATE
+                            ) """
+CREATE_ALBUM_ARTIST_TABLE = """ CREATE TABLE IF NOT EXISTS album_artists (
+                                album_uri text,
+                                artist_uri text,
+                                FOREIGN KEY (album_uri)
+                                    REFERENCES album(spotify_uri)
+                                    ON DELETE CASCADE,
+                                FOREIGN KEY (artist_uri)
+                                    REFERENCES artist(spotify_uri)
+                                    ON DELETE CASCADE
+                            ) """
 GROUP_TEXT = 'spotify:album:.* .* albumid=(spotify:album:.*) nolink=true ' \
              + 'onclick="playmeta.*'
+TODAY = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
 
 
 def log(descriptor):
@@ -98,7 +115,6 @@ def find_albums(html):
     Keyword arguments:
     html -- the html text to parse
     """
-    today = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
     match_string = re.compile('(spotify:album:.*)')
     group_string = re.compile(GROUP_TEXT)
     candidate_list = set()
@@ -113,7 +129,7 @@ def find_albums(html):
             if bits is None:
                 continue
             spotify_uri = bits.group(1)
-            candidate_list.add((spotify_uri, today, ''))
+            candidate_list.add((spotify_uri, TODAY, ''))
             # print("Spotify URI: {}".format(spotify_uri))
     log("Found {:d} albums".format(len(candidate_list)))
     return candidate_list
@@ -138,7 +154,9 @@ def insert_albums(conn, candidate_list):
                   + ' VALUES(?,?,?)'
     try:
         log('Creating table')
-        conn.execute(CREATE_CANDIDATE_TABLE)
+        conn.execute(CREATE_ALBUM_TABLE)
+        conn.execute(CREATE_ARTIST_TABLE)
+        conn.execute(CREATE_ALBUM_ARTIST_TABLE)
         log('Loading albums')
         for candidate in candidate_list:
             try:
@@ -202,7 +220,10 @@ def extract_artists(db_conn, sp_conn):
     select_stmt = 'SELECT spotify_uri, json_text from albums' \
                   + ' where artists_extracted = FALSE and json_text is not ""'
     update_stmt = 'UPDATE albums set artists_extracted = TRUE' \
-                  + ' where spotify_uri = ?'
+                  + ' where spotify_uri = ? and json_text = ?'
+    insert_artist_stmt = 'INSERT INTO artists (spotify_uri, add_date)' \
+                         + ' VALUES(?, ?)'
+    insert_album_artists_stmt = 'INSERT INTO album_artists VALUES(?, ?)'
     log('Retrieving albums to extract artists from')
     try:
         db_cursor = db_conn.cursor()
@@ -226,14 +247,24 @@ def extract_artists(db_conn, sp_conn):
                     album_artists.add((artist[u'uri']))
             for artist in album_artists:
                 all_album_artists.add((artist, album_uri))
-                artists.add((artist))
+                artists.add((artist, TODAY))
         except Exception as e:
             pprint(album)
             print(e)
             print(type(e))
             raise(e)
-    log('Number of artists: {:d}'.format(len(artists)))
-    log('Number of album-artist pairings: {:d}'.format(len(all_album_artists)))
+    try:
+        db_conn.executemany(insert_artist_stmt, artists)
+        db_conn.executemany(insert_album_artists_stmt, all_album_artists)
+        db_conn.executemany(update_stmt, albums)
+        db_conn.commit()
+        log('Number of artists: {:d}'.format(len(artists)))
+        log('Number of album-artist pairings: {:d}'.format(
+            len(all_album_artists)))
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
 
 
 if __name__ == '__main__':
