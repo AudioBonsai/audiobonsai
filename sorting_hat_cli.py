@@ -200,7 +200,7 @@ def get_candidate_json(db_conn, sp_conn):
 
 def extract_artists(db_conn, sp_conn):
     select_stmt = 'SELECT spotify_uri, json_text from albums' \
-                  + ' where artists_extracted = FALSE'
+                  + ' where artists_extracted = FALSE and json_text is not ""'
     update_stmt = 'UPDATE albums set artists_extracted = TRUE' \
                   + ' where spotify_uri = ?'
     log('Retrieving albums to extract artists from')
@@ -212,11 +212,28 @@ def extract_artists(db_conn, sp_conn):
         print(e)
         print(type(e))
 
+    artists = set()
+    all_album_artists = set()
     for album in albums:
-        album_json = json.loads(album[1])
-        album_uri = album[0]
-        pprint(album_json)
-        break
+        try:
+            album_artists = set()
+            album_json = json.loads(album[1])
+            album_uri = album[0]
+            for artist in album_json[u'artists']:
+                album_artists.add((artist[u'uri']))
+            for track in album_json['tracks'][u'items']:
+                for artist in track[u'artists']:
+                    album_artists.add((artist[u'uri']))
+            for artist in album_artists:
+                all_album_artists.add((artist, album_uri))
+                artists.add((artist))
+        except Exception as e:
+            pprint(album)
+            print(e)
+            print(type(e))
+            raise(e)
+    log('Number of artists: {:d}'.format(len(artists)))
+    log('Number of album-artist pairings: {:d}'.format(len(all_album_artists)))
 
 
 if __name__ == '__main__':
