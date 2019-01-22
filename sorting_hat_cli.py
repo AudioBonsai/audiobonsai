@@ -19,13 +19,20 @@ CREATE_ALBUM_TABLE = """ CREATE TABLE IF NOT EXISTS albums (
                                 spotify_uri text PRIMARY KEY,
                                 add_date DATE,
                                 json_text TEXT,
-                                artists_extracted BOOLEAN default FALSE
+                                artists_extracted BOOLEAN default 0,
+                                release_date DATE
                              ) """
 CREATE_ARTIST_TABLE = """ CREATE TABLE IF NOT EXISTS artists (
                                 spotify_uri text PRIMARY KEY,
                                 add_date DATE,
                                 json_text TEXT,
-                                last_json_date DATE
+                                last_json_date DATE,
+                                orig_foll INTEGER,
+                                current_foll INTEGER,
+                                daily_foll_change INTEGER,
+                                orig_pop INTEGER,
+                                current_pop INTEGER,
+                                daily_pop_change INTEGER
                             ) """
 CREATE_ALBUM_ARTIST_TABLE = """ CREATE TABLE IF NOT EXISTS album_artists (
                                 album_uri text,
@@ -36,7 +43,28 @@ CREATE_ALBUM_ARTIST_TABLE = """ CREATE TABLE IF NOT EXISTS album_artists (
                                 FOREIGN KEY (artist_uri)
                                     REFERENCES artist(spotify_uri)
                                     ON DELETE CASCADE
+                                PRIMARY KEY (album_uri, artist_uri)
                             ) """
+CREATE_POP_FOLL_TABLE = """ CREATE TABLE IF NOT EXISTS pop_foll (
+                            artist_uri TEXT,
+                            sample_date DATE,
+                            followers INTEGER,
+                            popularity INTEGER,
+                            FOREIGN KEY (artist_uri)
+                                REFERENCES artist(spotify_uri)
+                                ON DELETE CASCADE
+                            PRIMARY KEY (artist_uri, sample_date)
+                        )"""
+CREATE_DIFF_TABLE = """ CREATE TABLE IF NOT EXISTS diff (
+                        artist_uri TEXT PRIMARY KEY,
+                        current_followers INTEGER,
+                        previous_followers INTEGER,
+                        current_popularity INTEGER,
+                        previous_popularity INTEGER,
+                        FOREIGN KEY (artist_uri)
+                            REFERENCES artist(spotify_uri)
+                            ON DELETE CASCADE
+                    )"""
 GROUP_TEXT = 'spotify:album:.* .* albumid=(spotify:album:.*) nolink=true ' \
              + 'onclick="playmeta.*'
 TODAY = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
@@ -149,7 +177,7 @@ def create_connection():
         print(type(e))
 
 
-def insert_albums(conn, candidate_list):
+def insert_albums(conn, album_list):
     insert_stmt = 'INSERT INTO albums (spotify_uri, add_date, json_text)' \
                   + ' VALUES(?,?,?)'
     try:
@@ -157,10 +185,12 @@ def insert_albums(conn, candidate_list):
         conn.execute(CREATE_ALBUM_TABLE)
         conn.execute(CREATE_ARTIST_TABLE)
         conn.execute(CREATE_ALBUM_ARTIST_TABLE)
+        conn.execute(CREATE_POP_FOLL_TABLE)
+        conn.execute(CREATE_DIFF_TABLE)
         log('Loading albums')
-        for candidate in candidate_list:
+        for album in album_list:
             try:
-                conn.execute(insert_stmt, candidate)
+                conn.execute(insert_stmt, album)
             except sqlite3.IntegrityError:
                 # Ignore duplicates
                 pass
@@ -172,7 +202,7 @@ def insert_albums(conn, candidate_list):
         dir(e)
 
 
-def get_candidate_json(db_conn, sp_conn):
+def get_album_json(db_conn, sp_conn):
     select_stmt = 'SELECT spotify_uri from albums where json_text = ""'
     update_stmt = 'UPDATE albums set json_text = ? where spotify_uri = ?'
     log('Retrieving albums to update')
@@ -217,7 +247,150 @@ def get_candidate_json(db_conn, sp_conn):
 
 
 def extract_artists(db_conn, sp_conn):
-    select_stmt = 'SELECT spotify_uri, json_text from albums' \
+    select_stmt = 'SELECT spotify_uri, json_text from albums ' \
+                  + 'where artists_extracted = 0 and json_text is not ""'
+    update_stmt = 'UPDATE albums set artists_extracted = 1, ' \
+                  + 'release_date = ? where spotify_uri = ?'
+    insert_artist_stmt = 'INSERT INTO artists (spotify_uri, add_date)' \
+                         + ' VALUES(?, ?)'
+    insert_album_artists_stmt = 'INSERT INTO album_artists VALUES(?, ?)'
+    log('Retrieving albums to extract artists from')
+    try:
+        db_cursor = db_conn.cursor()
+        db_cursor.execute(select_stmt)
+        albums = db_cursor.fetchall()
+    except Exception as e:
+        print(e)
+        print(type(e))
+
+    artists = set()
+    all_album_artists = set()
+    update_albums = set()
+    for album in albums:
+        try:
+            album_artists = set()
+            album_json = json.loads(album[1])
+            album_uri = album[0]
+            release_date = album_json[u'release_date']
+            release_date_precision = album_json[u'release_date_precision']
+            formatted_release_date = None
+            if release_date_precision == 'year':
+                formatted_release_date = datetime.strptime(release_date, '%Y')
+            elif release_date_precision == 'month':
+                formatted_release_date = datetime.strptime(release_date,
+                                                           '%Y-%m')
+            elif release_date_precision == 'day':
+                formatted_release_date = datetime.strptime(release_date,
+                                                           '%Y-%m-%d')
+            update_albums.add((formatted_release_date, album_uri))
+            for artist in album_json[u'artists']:
+                album_artists.add((artist[u'uri']))
+            for track in album_json['tracks'][u'items']:
+                for artist in track[u'artists']:
+                    album_artists.add((artist[u'uri']))
+            for artist in album_artists:
+                all_album_artists.add((artist, album_uri))
+                artists.add((artist, TODAY))
+        except Exception as e:
+            pprint(album)
+            print(e)
+            print(type(e))
+            raise(e)
+    try:
+        log('Loading artists')
+        for artist in artists:
+            try:
+                db_conn.execute(insert_artist_stmt, artist)
+            except sqlite3.IntegrityError:
+                # Ignore duplicates
+                pass
+        log('Artists inserted')
+        log('Loading album<->artists')
+        for album_artist in all_album_artists:
+            try:
+                db_conn.execute(insert_album_artists_stmt, album_artist)
+            except sqlite3.IntegrityError:
+                # Ignore duplicates
+                pass
+        log('Album<->artists inserted')
+        db_conn.executemany(update_stmt, update_albums)
+        db_conn.commit()
+        log('Number of artists: {:d}'.format(len(artists)))
+        log('Number of album-artist pairings: {:d}'.format(
+            len(all_album_artists)))
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+
+def get_artist_json(db_conn, sp_conn):
+    select_stmt = 'SELECT spotify_uri from artists where last_json_date ' \
+                  + 'is not "' + TODAY + '"'
+    update_stmt = 'UPDATE artists set json_text = ?, last_json_date = ?, ' \
+                  + ' current_pop = ?, current_foll = ? where spotify_uri = ?'
+    insert_pop_foll = 'INSERT INTO pop_foll (artist_uri, sample_date,' \
+                      + ' followers, popularity) VALUES(?, ?, ?, ?)'
+    log('Retrieving albums to update')
+    try:
+        db_cursor = db_conn.cursor()
+        db_cursor.execute(select_stmt)
+        artists = db_cursor.fetchall()
+    except Exception as e:
+        print(e)
+        print(type(e))
+
+    offset = 0
+    batch_size = 50
+    update_list = set()
+    insert_pop_foll_list = set()
+    log('Requesting JSON for {:d} artists'.format(len(artists)))
+    while offset < len(artists):
+        sp_uri_list = [artist[0] for artist in
+                       artists[offset:offset + batch_size]]
+        try:
+            artist_dets_list = sp_conn.artists(sp_uri_list)
+            for artist_dets in artist_dets_list[u'artists']:
+                try:
+                    uri = artist_dets[u'uri']
+                    followers = artist_dets[u'followers'][u'total']
+                    popularity = artist_dets[u'popularity']
+                    update_list.add((json.dumps(artist_dets), TODAY,
+                                     popularity, followers, uri))
+                    insert_pop_foll_list.add((uri, TODAY, followers,
+                                              popularity))
+                except TypeError as te:
+                    print(te)
+                    print(type(te))
+                    raise(te)
+                    pass
+        except Exception as e:
+            print(e)
+            print(type(e))
+        if offset > 0 and offset % 1000 == 0:
+            log('-> {} artists retrieved'.format(offset))
+        offset += batch_size
+        try:
+            db_conn.executemany(update_stmt, update_list)
+            for pop_foll_entry in insert_pop_foll_list:
+                try:
+                    db_conn.execute(insert_pop_foll, pop_foll_entry)
+                except sqlite3.IntegrityError:
+                    # Ignore duplicates
+                    pass
+            db_conn.commit()
+            update_list = set()
+        except Exception as e:
+            print(e)
+            print(type(e))
+    log('Artist JSON updated in database')
+    log('Artist JSON retrieved')
+
+
+'''
+def extract_artist_stats(db_conn, sp_conn):
+    add_daily_pop_column = 'ALTER TABLE '
+    select_stmt = 'SELECT spotify_uri, json_text from artists' \
                   + ' where artists_extracted = FALSE and json_text is not ""'
     update_stmt = 'UPDATE albums set artists_extracted = TRUE' \
                   + ' where spotify_uri = ? and json_text = ?'
@@ -265,6 +438,7 @@ def extract_artists(db_conn, sp_conn):
         print(e)
         print(type(e))
         raise(e)
+'''
 
 
 if __name__ == '__main__':
@@ -290,7 +464,7 @@ if __name__ == '__main__':
 
     try:
         sp_conn = get_spotify_conn()
-        get_candidate_json(db_conn, sp_conn)
+        get_album_json(db_conn, sp_conn)
     except Exception as e:
         print(e)
         print(type(e))
@@ -303,5 +477,23 @@ if __name__ == '__main__':
         print(e)
         print(type(e))
         raise(e)
+
+    try:
+        sp_conn = get_spotify_conn()
+        get_artist_json(db_conn, sp_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    '''
+    try:
+        sp_conn = get_spotify_conn()
+        extract_artist_stats(db_conn, sp_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+    '''
 
     db_conn.close()
