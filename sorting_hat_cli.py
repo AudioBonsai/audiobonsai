@@ -6,7 +6,7 @@ import sqlite3
 import spotipy
 
 from audiobonsai import settings
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from pprint import pprint
 from sqlite3 import Error as sqlError
@@ -387,58 +387,44 @@ def get_artist_json(db_conn, sp_conn):
     log('Artist JSON retrieved')
 
 
-'''
-def extract_artist_stats(db_conn, sp_conn):
-    add_daily_pop_column = 'ALTER TABLE '
-    select_stmt = 'SELECT spotify_uri, json_text from artists' \
-                  + ' where artists_extracted = FALSE and json_text is not ""'
-    update_stmt = 'UPDATE albums set artists_extracted = TRUE' \
-                  + ' where spotify_uri = ? and json_text = ?'
-    insert_artist_stmt = 'INSERT INTO artists (spotify_uri, add_date)' \
-                         + ' VALUES(?, ?)'
-    insert_album_artists_stmt = 'INSERT INTO album_artists VALUES(?, ?)'
-    log('Retrieving albums to extract artists from')
+def pop_change_calcs(db_conn, sp_conn, day_delta=1):
+    previous_date = datetime.now() - timedelta(days=day_delta)
+    previous = previous_date.strftime("%Y-%m-%d 00:00:00.000000")
+    pull_previous = 'INSERT INTO diff (artist_uri, previous_followers, ' \
+                    + 'previous_popularity) SELECT artist_uri, ' \
+                    + 'followers, popularity FROM pop_foll WHERE ' \
+                    + 'sample_date = "' + previous + '"'
+    pull_today = 'UPDATE diff set current_followers = pf.followers, ' \
+                 + 'current_popularity = pf.popularity ' \
+                 + 'FROM diff INNER JOIN (SELECT pop_foll.followers, ' \
+                 + 'pop_foll.popularity, pop_foll.artist_uri ' \
+                 + 'FROM pop_foll WHERE pop_foll.sample_date = "' \
+                 + TODAY + '") as pf  ON diff.artist_uri = pf.artist_uri'
+    update_artists = 'UPDATE artists set daily_foll_change, daily_pop_change ' \
+                     + 'SELECT (diff.current_followers - ' \
+                     + 'diff.previous_followers), (diff.current_popularity ' \
+                     + '- diff.previous_popularity) FROM diff WHERE ' \
+                     + 'diff.artist_uri = artists.spotify_uri'
+    print(pull_today)
+    print(update_artists)
     try:
-        db_cursor = db_conn.cursor()
-        db_cursor.execute(select_stmt)
-        albums = db_cursor.fetchall()
-    except Exception as e:
-        print(e)
-        print(type(e))
-
-    artists = set()
-    all_album_artists = set()
-    for album in albums:
-        try:
-            album_artists = set()
-            album_json = json.loads(album[1])
-            album_uri = album[0]
-            for artist in album_json[u'artists']:
-                album_artists.add((artist[u'uri']))
-            for track in album_json['tracks'][u'items']:
-                for artist in track[u'artists']:
-                    album_artists.add((artist[u'uri']))
-            for artist in album_artists:
-                all_album_artists.add((artist, album_uri))
-                artists.add((artist, TODAY))
-        except Exception as e:
-            pprint(album)
-            print(e)
-            print(type(e))
-            raise(e)
-    try:
-        db_conn.executemany(insert_artist_stmt, artists)
-        db_conn.executemany(insert_album_artists_stmt, all_album_artists)
-        db_conn.executemany(update_stmt, albums)
+        log('Clearing diff table')
+        db_conn.execute("DELETE FROM diff")
         db_conn.commit()
-        log('Number of artists: {:d}'.format(len(artists)))
-        log('Number of album-artist pairings: {:d}'.format(
-            len(all_album_artists)))
+        log('Pulling previous vals')
+        db_conn.execute(pull_previous)
+        db_conn.commit()
+        log('Pulling current vals')
+        db_conn.execute(pull_today)
+        db_conn.commit()
+        log('Updating artist change vals')
+        db_conn.execute(update_artists)
+        db_conn.commit()
     except Exception as e:
         print(e)
         print(type(e))
         raise(e)
-'''
+    pass
 
 
 if __name__ == '__main__':
@@ -486,14 +472,23 @@ if __name__ == '__main__':
         print(type(e))
         raise(e)
 
-    '''
     try:
-        sp_conn = get_spotify_conn()
-        extract_artist_stats(db_conn, sp_conn)
+        update_orig_pop_foll = 'UPDATE artists SET orig_pop = current_pop, ' \
+                               + 'orig_foll = current_foll ' \
+                               + 'where orig_pop is NULL'
+        db_conn.execute(update_orig_pop_foll)
+        db_conn.commit()
     except Exception as e:
         print(e)
         print(type(e))
         raise(e)
-    '''
+
+    try:
+        sp_conn = get_spotify_conn()
+        pop_change_calcs(db_conn, sp_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
 
     db_conn.close()
