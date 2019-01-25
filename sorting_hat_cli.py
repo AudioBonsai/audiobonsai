@@ -55,16 +55,6 @@ CREATE_POP_FOLL_TABLE = """ CREATE TABLE IF NOT EXISTS pop_foll (
                                 ON DELETE CASCADE
                             PRIMARY KEY (artist_uri, sample_date)
                         )"""
-CREATE_DIFF_TABLE = """ CREATE TABLE IF NOT EXISTS diff (
-                        artist_uri TEXT PRIMARY KEY,
-                        current_followers INTEGER,
-                        previous_followers INTEGER,
-                        current_popularity INTEGER,
-                        previous_popularity INTEGER,
-                        FOREIGN KEY (artist_uri)
-                            REFERENCES artist(spotify_uri)
-                            ON DELETE CASCADE
-                    )"""
 GROUP_TEXT = 'spotify:album:.* .* albumid=(spotify:album:.*) nolink=true ' \
              + 'onclick="playmeta.*'
 TODAY = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
@@ -185,8 +175,7 @@ def insert_albums(conn, album_list):
         conn.execute(CREATE_ALBUM_TABLE)
         conn.execute(CREATE_ARTIST_TABLE)
         conn.execute(CREATE_ALBUM_ARTIST_TABLE)
-        conn.execute(CREATE_POP_FOLL_TABLE)
-        conn.execute(CREATE_DIFF_TABLE)
+        #conn.execute(CREATE_POP_FOLL_TABLE)
         log('Loading albums')
         for album in album_list:
             try:
@@ -325,14 +314,24 @@ def extract_artists(db_conn, sp_conn):
 
 
 def get_artist_json(db_conn, sp_conn):
+    today_name = datetime.now().strftime("%Y%m%d")
     select_stmt = 'SELECT spotify_uri from artists where last_json_date ' \
                   + 'is not "' + TODAY + '"'
     update_stmt = 'UPDATE artists set json_text = ?, last_json_date = ?, ' \
                   + ' current_pop = ?, current_foll = ? where spotify_uri = ?'
-    insert_pop_foll = 'INSERT INTO pop_foll (artist_uri, sample_date,' \
-                      + ' followers, popularity) VALUES(?, ?, ?, ?)'
+    create_pop_foll = 'CREATE TABLE IF NOT EXISTS pop_foll_' + today_name \
+                      + ' ( artist_uri TEXT, foll_' + today_name \
+                      + ' INTEGER, pop_' + today_name + ' INTEGER, ' \
+                      + 'FOREIGN KEY (artist_uri) ' \
+                      + '  REFERENCES artist(spotify_uri) ON DELETE CASCADE ' \
+                      + 'PRIMARY KEY (artist_uri))'
+    insert_pop_foll = 'INSERT INTO pop_foll_' + today_name + ' (artist_uri,' \
+                      + ' foll_' + today_name + ', pop_' + today_name \
+                      + ') VALUES(?, ?, ?)'
     log('Retrieving albums to update')
     try:
+        db_conn.execute(create_pop_foll)
+        db_conn.commit()
         db_cursor = db_conn.cursor()
         db_cursor.execute(select_stmt)
         artists = db_cursor.fetchall()
@@ -357,7 +356,7 @@ def get_artist_json(db_conn, sp_conn):
                     popularity = artist_dets[u'popularity']
                     update_list.add((json.dumps(artist_dets), TODAY,
                                      popularity, followers, uri))
-                    insert_pop_foll_list.add((uri, TODAY, followers,
+                    insert_pop_foll_list.add((uri, followers,
                                               popularity))
                 except TypeError as te:
                     print(te)
@@ -369,57 +368,64 @@ def get_artist_json(db_conn, sp_conn):
             print(type(e))
         if offset > 0 and offset % 1000 == 0:
             log('-> {} artists retrieved'.format(offset))
+            try:
+                db_conn.executemany(update_stmt, update_list)
+                for pop_foll_entry in insert_pop_foll_list:
+                    try:
+                        db_conn.execute(insert_pop_foll, pop_foll_entry)
+                    except sqlite3.IntegrityError:
+                        # Ignore duplicates
+                        pass
+                db_conn.commit()
+                update_list = set()
+            except Exception as e:
+                print(e)
+                print(type(e))
         offset += batch_size
-        try:
-            db_conn.executemany(update_stmt, update_list)
-            for pop_foll_entry in insert_pop_foll_list:
-                try:
-                    db_conn.execute(insert_pop_foll, pop_foll_entry)
-                except sqlite3.IntegrityError:
-                    # Ignore duplicates
-                    pass
-            db_conn.commit()
-            update_list = set()
-        except Exception as e:
-            print(e)
-            print(type(e))
     log('Artist JSON updated in database')
     log('Artist JSON retrieved')
 
 
-def pop_change_calcs(db_conn, sp_conn, day_delta=1):
-    previous_date = datetime.now() - timedelta(days=day_delta)
-    previous = previous_date.strftime("%Y-%m-%d 00:00:00.000000")
-    pull_previous = 'INSERT INTO diff (artist_uri, previous_followers, ' \
-                    + 'previous_popularity) SELECT artist_uri, ' \
-                    + 'followers, popularity FROM pop_foll WHERE ' \
-                    + 'sample_date = "' + previous + '"'
-    pull_today = 'UPDATE diff set current_followers = pf.followers, ' \
-                 + 'current_popularity = pf.popularity ' \
-                 + 'FROM diff INNER JOIN (SELECT pop_foll.followers, ' \
-                 + 'pop_foll.popularity, pop_foll.artist_uri ' \
-                 + 'FROM pop_foll WHERE pop_foll.sample_date = "' \
-                 + TODAY + '") as pf  ON diff.artist_uri = pf.artist_uri'
-    update_artists = 'UPDATE artists set daily_foll_change, daily_pop_change ' \
-                     + 'SELECT (diff.current_followers - ' \
-                     + 'diff.previous_followers), (diff.current_popularity ' \
-                     + '- diff.previous_popularity) FROM diff WHERE ' \
-                     + 'diff.artist_uri = artists.spotify_uri'
-    print(pull_today)
-    print(update_artists)
+def pop_change_tables(db_conn, sp_conn):
+    yesterday_date = datetime.now() - timedelta(days=1)
+    yesterday_table = 'pop_foll_{}'.format(yesterday_date.strftime("%Y%m%d"))
+    weekago_date = datetime.now() - timedelta(days=7)
+    weekago_table = 'pop_foll_{}'.format(weekago_date.strftime("%Y%m%d"))
+    monthago_date = datetime.now() - timedelta(days=30)
+    monthago_table = 'pop_foll_{}'.format(monthago_date.strftime("%Y%m%d"))
+
+    drop_yesterday_table = 'DROP TABLE IF EXISTS yesterday_diff'
+    create_yesterday_table = 'create table yesterday_diff as select * FROM ' \
+                             + yesterday_table + ' INNER JOIN today ON ' \
+                             + yesterday_table + '.artist_uri = ' \
+                             + 'today.artist_uri'
+    drop_weekago_table = 'DROP TABLE IF EXISTS weekago_diff'
+    create_weekago_table = 'create table weekago_diff as select * FROM ' \
+                           + weekago_table + ' INNER JOIN today ON ' \
+                           + weekago_table + '.artist_uri = ' \
+                           + 'today.artist_uri'
+    drop_monthago_table = 'DROP TABLE IF EXISTS monthago_diff'
+    create_monthago_table = 'create table monthago_diff as select * FROM ' \
+                            + monthago_table + ' INNER JOIN today ON ' \
+                            + monthago_table + '.artist_uri = ' \
+                            + 'today.artist_uri'
+    print(create_yesterday_table)
     try:
-        log('Clearing diff table')
-        db_conn.execute("DELETE FROM diff")
+        log('Creating yesterday diff join')
+        db_conn.execute(drop_yesterday_table)
         db_conn.commit()
-        log('Pulling previous vals')
-        db_conn.execute(pull_previous)
+        db_conn.execute(create_yesterday_table)
         db_conn.commit()
-        log('Pulling current vals')
-        db_conn.execute(pull_today)
-        db_conn.commit()
-        log('Updating artist change vals')
-        db_conn.execute(update_artists)
-        db_conn.commit()
+        # log('Creating week ago diff join')
+        # db_conn.execute(drop_weekago_table)
+        # db_conn.commit()
+        # db_conn.execute(create_weekago_table)
+        # db_conn.commit()
+        # log('Creating month ago diff join')
+        # db_conn.execute(drop_monthago_table)
+        # db_conn.commit()
+        # db_conn.execute(create_monthago_table)
+        # db_conn.commit()
     except Exception as e:
         print(e)
         print(type(e))
@@ -485,7 +491,7 @@ if __name__ == '__main__':
 
     try:
         sp_conn = get_spotify_conn()
-        pop_change_calcs(db_conn, sp_conn)
+        pop_change_tables(db_conn, sp_conn)
     except Exception as e:
         print(e)
         print(type(e))
