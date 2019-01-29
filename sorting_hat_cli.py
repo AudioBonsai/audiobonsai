@@ -484,7 +484,7 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.commit()
         yesterday_artists = select_top100(db_conn, 'yesterday_diff',
                                           yesterday_date.strftime("%Y%m%d"))
-        top_100_tracks = list()
+        top_100_tracks = set()
         for artist_uri in yesterday_artists:
             db_cursor = db_conn.cursor()
             db_cursor.execute(get_album_artists.format(artist_uri))
@@ -501,15 +501,22 @@ def pop_change_tables(db_conn, sp_conn):
             median_duration = sorted_durations[floor(len(durations)/2)]
             track_diffs = {}
             track_durations = {}
-            for track in album_tracks[u'items'][:3]:
-                track_diffs[abs(track[u'duration_ms'] -
-                            median_duration)] = track[u'uri']
-                track_durations[track[u'uri']] = track[u'duration_ms']
-            track_uri = track_diffs[sorted(track_diffs.keys())[0]]
-            top_100_tracks.append(track_uri)
-            # log('{}: {} ({}) - {} ({})'.format(artist_uri, album_json[u'uri'],
-            #                                    median_duration, track_uri,
-            #                                    track_durations[track_uri]))
+
+            for track in album_tracks[u'items']:
+                for artist in track[u'artists']:
+                    if artist_uri == artist[u'uri']:
+                        track_diffs[abs(track[u'duration_ms'] -
+                                    median_duration)] = track[u'uri']
+                        track_durations[track[u'uri']] = track[u'duration_ms']
+                if len(track_diffs.keys()) == 3:
+                    break
+            if len(track_diffs.keys()) > 0:
+                track_uri = track_diffs[sorted(track_diffs.keys())[0]]
+                top_100_tracks.add(track_uri)
+                log('{}: {} ({}) - {} ({})'.format(artist_uri,
+                                                   album_json[u'uri'],
+                                                   median_duration, track_uri,
+                                                   track_durations[track_uri]))
         sp_conn.user_playlist_replace_tracks(settings.SPOTIFY_USERNAME,
                                              playlist, top_100_tracks)
         log('Creating week ago diff join')
