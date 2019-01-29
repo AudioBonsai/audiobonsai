@@ -1,12 +1,14 @@
 import codecs
 import json
 import os
+import pandas as pd
 import re
 import sqlite3
 import spotipy
 
 from audiobonsai import settings
 from datetime import datetime, timedelta
+from math import floor
 from pathlib import Path
 from pprint import pprint
 from sqlite3 import Error as sqlError
@@ -242,7 +244,8 @@ def extract_artists(db_conn, sp_conn):
                   + 'release_date = ? where spotify_uri = ?'
     insert_artist_stmt = 'INSERT INTO artists (spotify_uri, add_date)' \
                          + ' VALUES(?, ?)'
-    insert_album_artists_stmt = 'INSERT INTO album_artists VALUES(?, ?)'
+    insert_album_artists_stmt = 'INSERT INTO album_artists (artist_uri, ' \
+                                + 'album_uri) VALUES(?, ?)'
     log('Retrieving albums to extract artists from')
     try:
         db_cursor = db_conn.cursor()
@@ -386,27 +389,90 @@ def get_artist_json(db_conn, sp_conn):
     log('Artist JSON retrieved')
 
 
+def attr_score(val, factor):
+    return (val//factor)**2
+
+
+def stat_score(df, in_col, out_col):
+    in_min = df[in_col].min()
+    in_max = df[in_col].max()
+    in_col_temp = in_col + "_temp"
+    df.loc[:, in_col_temp] = df[in_col].apply(lambda x: x - in_min)
+    factor = (in_max - in_min) // 25
+    df.loc[:, out_col] = df[in_col_temp].apply(lambda x: attr_score(x, factor))
+    return df
+
+
+def select_top100(db_conn, table_name, previous_date):
+    today_pop = 'pop_{}'.format(datetime.now().strftime("%Y%m%d"))
+    today_foll = 'foll_{}'.format(datetime.now().strftime("%Y%m%d"))
+    prev_pop = 'pop_{}'.format(previous_date)
+    prev_foll = 'foll_{}'.format(previous_date)
+    df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
+    df['pop_diff'] = df[today_pop] - df[prev_pop]
+    df['pop_diff_pct'] = (df['pop_diff']/df[prev_pop])*100
+    df['pop_diff_pct'] = df['pop_diff_pct'].apply(lambda x: min(100, x))
+    df = stat_score(df, 'pop_diff_pct', 'pop_diff_score')
+    df['foll_diff'] = df[today_foll] - df[prev_foll]
+    df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
+    df['foll_diff_pct'] = df['foll_diff_pct'].apply(lambda x: min(100, x))
+    df = stat_score(df, 'foll_diff_pct', 'foll_diff_score')
+    df['final_score'] = df['pop_diff_score'] + df['foll_diff_score']
+    df['category'] = pd.cut(df[prev_pop], 25)
+    df = df.sort_values(by='final_score', ascending=False)
+
+    categories = df['category'].unique()
+    per_category = floor(100/len(categories))
+    remainder = 100 - (len(categories)*per_category)
+    category_num = 1
+    artist_uris = set()
+    for category in sorted(categories):
+        category_df = df[df['category'] == category]
+        num_albums = per_category
+        if category_num <= remainder:
+            num_albums += 1
+        category_df = category_df.head(num_albums)
+        artist_uris.update(category_df['artist_uri'].tolist())
+        category_num += 1
+    return artist_uris
+
+
 def pop_change_tables(db_conn, sp_conn):
+    playlist = 'spotify:user:audiobonsai:playlist:5CmD30dzQjCujR4CAnL8qc'
+    today_table_name = 'pop_foll_' + datetime.now().strftime("%Y%m%d")
     yesterday_date = datetime.now() - timedelta(days=1)
     yesterday_table = 'pop_foll_{}'.format(yesterday_date.strftime("%Y%m%d"))
     weekago_date = datetime.now() - timedelta(days=7)
     weekago_table = 'pop_foll_{}'.format(weekago_date.strftime("%Y%m%d"))
     monthago_date = datetime.now() - timedelta(days=30)
     monthago_table = 'pop_foll_{}'.format(monthago_date.strftime("%Y%m%d"))
+    get_album_from_artist = 'SELECT albums.json_text FROM album_artists ' \
+                            + 'INNER JOIN albums ON album_artists.album_uri ' \
+                            + '= albums.spotify_uri WHERE ' \
+                            + 'album_artists.artist_uri = "{}" ' \
+                            + 'ORDER BY albums.add_date DESC LIMIT 1'
+    get_album_artists = 'SELECT albums.spotify_uri, albums.add_date FROM ' \
+                        + 'album_artists INNER JOIN albums ON ' \
+                        + 'album_artists.album_uri = albums.spotify_uri ' \
+                        + 'WHERE album_artists.artist_uri = "{}" ' \
+                        + 'ORDER BY albums.add_date DESC'
 
     drop_yesterday_table = 'DROP TABLE IF EXISTS yesterday_diff'
     create_yesterday_table = 'create table yesterday_diff as select * FROM ' \
-                             + yesterday_table + ' INNER JOIN today ON ' \
+                             + yesterday_table + ' INNER JOIN ' \
+                             + today_table_name + ' as today ON ' \
                              + yesterday_table + '.artist_uri = ' \
                              + 'today.artist_uri'
     drop_weekago_table = 'DROP TABLE IF EXISTS weekago_diff'
     create_weekago_table = 'create table weekago_diff as select * FROM ' \
-                           + weekago_table + ' INNER JOIN today ON ' \
+                           + weekago_table + ' INNER JOIN ' \
+                           + today_table_name + ' as today ON ' \
                            + weekago_table + '.artist_uri = ' \
                            + 'today.artist_uri'
     drop_monthago_table = 'DROP TABLE IF EXISTS monthago_diff'
     create_monthago_table = 'create table monthago_diff as select * FROM ' \
-                            + monthago_table + ' INNER JOIN today ON ' \
+                            + monthago_table + ' INNER JOIN ' \
+                            + today_table_name + ' as today ON ' \
                             + monthago_table + '.artist_uri = ' \
                             + 'today.artist_uri'
     print(create_yesterday_table)
@@ -416,11 +482,41 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.commit()
         db_conn.execute(create_yesterday_table)
         db_conn.commit()
-        # log('Creating week ago diff join')
-        # db_conn.execute(drop_weekago_table)
-        # db_conn.commit()
-        # db_conn.execute(create_weekago_table)
-        # db_conn.commit()
+        yesterday_artists = select_top100(db_conn, 'yesterday_diff',
+                                          yesterday_date.strftime("%Y%m%d"))
+        top_100_tracks = list()
+        for artist_uri in yesterday_artists:
+            db_cursor = db_conn.cursor()
+            db_cursor.execute(get_album_artists.format(artist_uri))
+            # print('ARIST_URI: {}'.format(artist_uri))
+            # print(db_cursor.fetchall())
+            db_cursor.execute(get_album_from_artist.format(artist_uri))
+            result = db_cursor.fetchone()
+            album_json = json.loads(result[0])
+            album_tracks = album_json[u'tracks']
+            durations = list()
+            for track in album_tracks[u'items']:
+                durations.append(track[u'duration_ms'])
+            sorted_durations = sorted(durations)
+            median_duration = sorted_durations[floor(len(durations)/2)]
+            track_diffs = {}
+            track_durations = {}
+            for track in album_tracks[u'items'][:3]:
+                track_diffs[abs(track[u'duration_ms'] -
+                            median_duration)] = track[u'uri']
+                track_durations[track[u'uri']] = track[u'duration_ms']
+            track_uri = track_diffs[sorted(track_diffs.keys())[0]]
+            top_100_tracks.append(track_uri)
+            # log('{}: {} ({}) - {} ({})'.format(artist_uri, album_json[u'uri'],
+            #                                    median_duration, track_uri,
+            #                                    track_durations[track_uri]))
+        sp_conn.user_playlist_replace_tracks(settings.SPOTIFY_USERNAME,
+                                             playlist, top_100_tracks)
+        log('Creating week ago diff join')
+        db_conn.execute(drop_weekago_table)
+        db_conn.commit()
+        db_conn.execute(create_weekago_table)
+        db_conn.commit()
         # log('Creating month ago diff join')
         # db_conn.execute(drop_monthago_table)
         # db_conn.commit()
@@ -430,7 +526,6 @@ def pop_change_tables(db_conn, sp_conn):
         print(e)
         print(type(e))
         raise(e)
-    pass
 
 
 if __name__ == '__main__':
