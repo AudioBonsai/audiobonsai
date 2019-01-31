@@ -403,35 +403,60 @@ def stat_score(df, in_col, out_col):
     return df
 
 
-def select_top100(db_conn, table_name, previous_date):
+def set_category(prev_pop):
+    if prev_pop == 0:
+        return 0
+    elif prev_pop > 0 and prev_pop <= 5:
+        return 1
+    elif prev_pop > 5 and prev_pop <= 15:
+        return 2
+    elif prev_pop > 15 and prev_pop <= 30:
+        return 3
+    elif prev_pop > 30 and prev_pop <= 45:
+        return 4
+    elif prev_pop > 45 and prev_pop <= 60:
+        return 5
+    else:
+        return 6
+
+
+def select_top_tracks(db_conn, table_name, previous_date, num_tracks=100):
     today_pop = 'pop_{}'.format(datetime.now().strftime("%Y%m%d"))
     today_foll = 'foll_{}'.format(datetime.now().strftime("%Y%m%d"))
     prev_pop = 'pop_{}'.format(previous_date)
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
+    df['category'] = df[prev_pop].apply(lambda x: set_category(x))
+    df[today_pop] = df[today_pop]
+    df[prev_pop] = df[prev_pop]
+    df[today_foll] = df[today_foll]
+    df[prev_pop] = df[prev_pop]
     df['pop_diff'] = df[today_pop] - df[prev_pop]
-    df['pop_diff_pct'] = (df['pop_diff']/df[prev_pop])*100
-    df['pop_diff_pct'] = df['pop_diff_pct'].apply(lambda x: min(100, x))
-    df = stat_score(df, 'pop_diff_pct', 'pop_diff_score')
+    # df['pop_diff_pct'] = (df['pop_diff']/df[prev_pop])*100
+    # df['pop_diff_pct'] = df['pop_diff_pct'].apply(lambda x: min(100, x))
+    # df = stat_score(df, 'pop_diff_pct', 'pop_diff_score')
     df['foll_diff'] = df[today_foll] - df[prev_foll]
-    df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
-    df['foll_diff_pct'] = df['foll_diff_pct'].apply(lambda x: min(100, x))
-    df = stat_score(df, 'foll_diff_pct', 'foll_diff_score')
-    df['final_score'] = df['pop_diff_score'] + df['foll_diff_score']
-    df['category'] = pd.cut(df[prev_pop], 25)
+    # df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
+    # df['foll_diff_pct'] = df['foll_diff_pct'].apply(lambda x: min(100, x))
+    # df = stat_score(df, 'foll_diff_pct', 'foll_diff_score')
+    df['final_score'] = df['pop_diff'] + df['foll_diff']
+    # df['category'] = pd.cut(df[prev_pop], 25)
     df = df.sort_values(by='final_score', ascending=False)
 
     categories = df['category'].unique()
-    per_category = floor(100/len(categories))
-    remainder = 100 - (len(categories)*per_category)
     category_num = 1
     artist_uris = set()
     for category in sorted(categories):
         category_df = df[df['category'] == category]
-        num_albums = per_category
-        if category_num <= remainder:
-            num_albums += 1
+        num_albums = 5
+        if category == 3:
+            num_albums = 10
+        elif category == 4 or category == 5:
+            num_albums = 15
         category_df = category_df.head(num_albums)
+        print(category_df.loc[:, ['artist_uri', 'category', prev_pop,
+                                  prev_foll, 'foll_diff', 'pop_diff',
+                                  'final_score']])
         artist_uris.update(category_df['artist_uri'].tolist())
         category_num += 1
     return artist_uris
@@ -482,16 +507,20 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.commit()
         db_conn.execute(create_yesterday_table)
         db_conn.commit()
-        yesterday_artists = select_top100(db_conn, 'yesterday_diff',
-                                          yesterday_date.strftime("%Y%m%d"))
-        top_100_tracks = set()
-        for artist_uri in yesterday_artists:
+        ystdy_artists = select_top_tracks(db_conn, 'yesterday_diff',
+                                          yesterday_date.strftime("%Y%m%d"),
+                                          50)
+        top_tracks = set()
+        for artist_uri in ystdy_artists:
             db_cursor = db_conn.cursor()
             db_cursor.execute(get_album_artists.format(artist_uri))
             # print('ARIST_URI: {}'.format(artist_uri))
             # print(db_cursor.fetchall())
             db_cursor.execute(get_album_from_artist.format(artist_uri))
             result = db_cursor.fetchone()
+            if result is None:
+                log('{} ARTIST URI NOT FOUND IN DB!'.format(artist_uri))
+                continue
             album_json = json.loads(result[0])
             album_tracks = album_json[u'tracks']
             durations = list()
@@ -512,13 +541,13 @@ def pop_change_tables(db_conn, sp_conn):
                     break
             if len(track_diffs.keys()) > 0:
                 track_uri = track_diffs[sorted(track_diffs.keys())[0]]
-                top_100_tracks.add(track_uri)
-                log('{}: {} ({}) - {} ({})'.format(artist_uri,
-                                                   album_json[u'uri'],
-                                                   median_duration, track_uri,
-                                                   track_durations[track_uri]))
+                top_tracks.add(track_uri)
+                # log('{}: {} ({}) - {} ({})'.format(artist_uri,
+                #                                    album_json[u'uri'],
+                #                                    median_duration, track_uri,
+                #                                    track_durations[track_uri]))
         sp_conn.user_playlist_replace_tracks(settings.SPOTIFY_USERNAME,
-                                             playlist, top_100_tracks)
+                                             playlist, top_tracks)
         log('Creating week ago diff join')
         db_conn.execute(drop_weekago_table)
         db_conn.commit()
