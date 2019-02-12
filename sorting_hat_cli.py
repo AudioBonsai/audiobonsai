@@ -18,6 +18,9 @@ EVERYNOISE_URL = 'http://everynoise.com/spotify_new_releases.html'
 GROUP_TEXT = 'spotify:album:.* .* albumid=(spotify:album:.*) nolink=true ' \
              + 'onclick="playmeta.*'
 TODAY = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
+DAILY_SAMPLER = 'spotify:user:audiobonsai:playlist:5CmD30dzQjCujR4CAnL8qc'
+WEEKLY_SAMPLER = 'spotify:user:audiobonsai:playlist:1FPe3BebdleEhyjPVmDgbr'
+GRAB_BAG = 'spotify:user:audiobonsai:playlist:1NHFxGhB8klgXaie2ylyzp'
 
 
 def todays_dir():
@@ -447,8 +450,6 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_date, playlist):
 
 
 def pop_change_tables(db_conn, sp_conn):
-    ystdy_playlist = 'spotify:user:audiobonsai:playlist:5CmD30dzQjCujR4CAnL8qc'
-    wkago_playlist = 'spotify:user:audiobonsai:playlist:1FPe3BebdleEhyjPVmDgbr'
     today_table_name = 'pop_foll_' + datetime.now().strftime("%Y%m%d")
     yesterday_date = datetime.now() - timedelta(days=1)
     yesterday_table = 'pop_foll_{}'.format(yesterday_date.strftime("%Y%m%d"))
@@ -498,14 +499,14 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.execute(create_yesterday_table)
         db_conn.commit()
         rebuild_playlist(db_conn, sp_conn, 'yesterday_diff', yesterday_date,
-                         ystdy_playlist)
+                         DAILY_SAMPLER)
         log('Creating week ago diff join')
         db_conn.execute(drop_weekago_table)
         db_conn.commit()
         db_conn.execute(create_weekago_table)
         db_conn.commit()
         rebuild_playlist(db_conn, sp_conn, 'weekago_diff', weekago_date,
-                         wkago_playlist)
+                         WEEKLY_SAMPLER)
         # log('Creating month ago diff join')
         # db_conn.execute(drop_monthago_table)
         # db_conn.commit()
