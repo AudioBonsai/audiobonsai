@@ -1,3 +1,4 @@
+import add_trade_rec
 import codecs
 import json
 import os
@@ -11,6 +12,7 @@ from datetime import datetime, timedelta
 from math import floor
 from pathlib import Path
 from pprint import pprint
+from spotipy import SpotifyException
 from urllib.request import urlopen
 
 
@@ -285,6 +287,24 @@ def get_artist_json(db_conn, sp_conn):
                                      popularity, followers, uri))
                     insert_pop_foll_list.add((uri, followers,
                                               popularity))
+                except SpotifyException as se:
+                    # one of the URIs failed
+                    print(se)
+                    print(type(se))
+                    for sp_uri in sp_uri_list:
+                        try:
+                            artist_dets = sp_conn.artist(sp_uri)
+                            uri = artist_dets[u'uri']
+                            followers = artist_dets[u'followers'][u'total']
+                            popularity = artist_dets[u'popularity']
+                            update_list.add((json.dumps(artist_dets), TODAY,
+                                             popularity, followers, uri))
+                            insert_pop_foll_list.add((uri, followers,
+                                                      popularity))
+                        except SpotifyException as se:
+                            log('Failed getting artist {}'.format(sp_uri))
+                            print(se)
+                            print(type(se))
                 except TypeError as te:
                     print(te)
                     print(type(te))
@@ -327,34 +347,12 @@ def stat_score(df, in_col, out_col):
     return df
 
 
-'''
-def set_category(prev_pop):
-    if prev_pop == 0:
-        return 0
-    elif prev_pop > 0 and prev_pop <= 5:
-        return 1
-    elif prev_pop > 5 and prev_pop <= 15:
-        return 2
-    elif prev_pop > 15 and prev_pop <= 30:
-        return 3
-    elif prev_pop > 30 and prev_pop <= 45:
-        return 4
-    elif prev_pop > 45 and prev_pop <= 60:
-        return 5
-    elif prev_pop > 60 and prev_pop <= 75:
-        return 6
-    else:
-        return 7
-'''
-
-
 def select_grab_bag(db_conn, table_name, previous_date):
     today_pop = 'pop_{}'.format(datetime.now().strftime("%Y%m%d"))
     today_foll = 'foll_{}'.format(datetime.now().strftime("%Y%m%d"))
     prev_pop = 'pop_{}'.format(previous_date)
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
-    # print(df.columns)
     df['pop_diff'] = df[today_pop] - df[prev_pop]
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
@@ -370,45 +368,22 @@ def select_top_tracks(db_conn, table_name, previous_date):
     prev_pop = 'pop_{}'.format(previous_date)
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
-    # df['category'] = df[prev_pop].apply(lambda x: set_category(x))
-    # df.loc[df['trade_rec'] == 1, 'category'] = 8
     df['pop_diff'] = df[today_pop] - df[prev_pop]
     df['pop_diff_pct'] = (df['pop_diff']/df[prev_pop])*100
-    # df['pop_diff_pct'] = df['pop_diff_pct'].apply(lambda x: min(100, x))
-    # df = stat_score(df, 'pop_diff_pct', 'pop_diff_score')
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
-    # df['foll_diff_pct'] = df['foll_diff_pct'].apply(lambda x: min(100, x))
-    # df = stat_score(df, 'foll_diff_pct', 'foll_diff_score')
     df['category'] = pd.cut(df[prev_pop], 10)
-    # df = df.sort_values(by='final_score', ascending=False)
 
     categories = df['category'].unique()
     artist_uris = set()
     num_albums = 6
     for category in sorted(categories):
         category_df = df[df['category'] == category]
-        # num_albums = 5
-        # if category in [0, 1, 2, 3]:
-        #     num_albums = 1
-        # elif category in [4, 7]:
-        #     num_albums = 6
-        # elif category in [5, 6]:
-        #     num_albums = 10
-        # else:
-        #     num_albums = 30
-        # category_df = stat_score(category_df, 'pop_diff',
-        #                          'pop_diff_score')
-        # category_df = stat_score(category_df, 'foll_diff',
-        #                           'foll_diff_score')
         category_df['final_score'] = (category_df['pop_diff'] * 100) \
             + category_df['foll_diff']
         category_df = category_df.sort_values(by='final_score',
                                               ascending=False)
         category_df = category_df.head(num_albums)
-        # print(category_df.loc[:, ['artist_uri', 'category', 'trade_rec',
-        #                          prev_pop, prev_foll, 'pop_diff', 'foll_diff',
-        #                          'final_score']])
         artist_uris.update(category_df['artist_uri'].tolist())
     return artist_uris
 
@@ -428,8 +403,6 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
     for artist_uri in prev_artists:
         db_cursor = db_conn.cursor()
         db_cursor.execute(get_album_artists.format(artist_uri))
-        # print('ARIST_URI: {}'.format(artist_uri))
-        # print(db_cursor.fetchall())
         db_cursor.execute(get_album_from_artist.format(artist_uri))
         result = db_cursor.fetchone()
         if result is None:
@@ -456,10 +429,6 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
         if len(track_diffs.keys()) > 0:
             track_uri = track_diffs[sorted(track_diffs.keys())[0]]
             top_tracks.add(track_uri)
-            # log('{}: {} ({}) - {} ({})'.format(artist_uri,
-            #                                    album_json[u'uri'],
-            #                                    median_duration, track_uri,
-            #                                    track_durations[track_uri]))
     sp_conn.user_playlist_replace_tracks(settings.SPOTIFY_USERNAME,
                                          playlist, top_tracks)
 
@@ -508,16 +477,6 @@ def pop_change_tables(db_conn, sp_conn):
                              + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                              + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
                              + 's4.artist_uri = art.spotify_uri'
-    '''create table yesterday_diff as ' \
-                             + 'SELECT * from albums AS al INNER JOIN' \
-                             + '(SELECT * from album_artists AS aa INNER JOIN '\
-                             + '(SELECT * FROM ' \
-                             + yesterday_table + ' INNER JOIN ' \
-                             + today_table_name + ' AS today ON ' \
-                             + yesterday_table + '.artist_uri = ' \
-                             + 'today.artist_uri) as s1 ON s1.artist_uri = ' \
-                             + 'aa.artist_uri) as s2 ON s2.album_uri = ' \
-                             + 'al.spotify_uri'''
     drop_weekago_table = 'DROP TABLE IF EXISTS weekago_diff'
     create_weekago_table = 'create table weekago_diff as ' \
                            + 'SELECT art.spotify_uri, art.orig_pop, ' \
@@ -536,17 +495,6 @@ def pop_change_tables(db_conn, sp_conn):
                            + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                            + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
                            + 's4.artist_uri = art.spotify_uri'
-    '''create table weekago_diff as ' \
-                           + 'SELECT * from albums AS al INNER JOIN' \
-                           + '(SELECT * from album_artists AS aa INNER JOIN '\
-                           + '(select * FROM ' \
-                           + weekago_table + ' INNER JOIN ' \
-                           + today_table_name + ' as today ON ' \
-                           + weekago_table + '.artist_uri = ' \
-                           + 'today.artist_uri) as s1 ON s1.artist_uri = ' \
-                           + 'aa.artist_uri) as s2 ON s2.album_uri = ' \
-                           + 'al.spotify_uri'''
-    # print(create_grab_bag_table)
     try:
         log('Creating grab bag diff join')
         db_conn.execute(drop_grab_bag_table)
@@ -605,6 +553,14 @@ if __name__ == '__main__':
 
     try:
         sp_conn = get_spotify_conn()
+        for playlist_info in add_trade_rec.PLAYLISTS:
+            add_trade_rec.add_playlist_recs(playlist_info, sp_conn, db_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    try:
         get_album_json(db_conn, sp_conn)
     except Exception as e:
         print(e)
@@ -614,6 +570,26 @@ if __name__ == '__main__':
     try:
         sp_conn = get_spotify_conn()
         extract_artists(db_conn, sp_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    cutoff_date = datetime.now() - timedelta(days=30)
+    cutoff_str = cutoff_date.strftime("%Y-%m-%d 00:00:00.000000")
+    try:
+        db_conn.execute('DELETE FROM albums WHERE release_date < "{}"'.format(
+                        cutoff_str))
+        db_conn.commit()
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    try:
+        db_conn.execute('DELETE from artists where artists.spotify_uri not '
+                        + 'in (select distinct artist_uri from album_artists)')
+        db_conn.commit()
     except Exception as e:
         print(e)
         print(type(e))
