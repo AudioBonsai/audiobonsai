@@ -327,6 +327,7 @@ def stat_score(df, in_col, out_col):
     return df
 
 
+'''
 def set_category(prev_pop):
     if prev_pop == 0:
         return 0
@@ -344,6 +345,23 @@ def set_category(prev_pop):
         return 6
     else:
         return 7
+'''
+
+
+def select_grab_bag(db_conn, table_name, previous_date):
+    today_pop = 'pop_{}'.format(datetime.now().strftime("%Y%m%d"))
+    today_foll = 'foll_{}'.format(datetime.now().strftime("%Y%m%d"))
+    prev_pop = 'pop_{}'.format(previous_date)
+    prev_foll = 'foll_{}'.format(previous_date)
+    df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
+    # print(df.columns)
+    df['pop_diff'] = df[today_pop] - df[prev_pop]
+    df['foll_diff'] = df[today_foll] - df[prev_foll]
+    df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
+    df = df[df['pop_diff'] > 0]
+    df = df[df['foll_diff'] > 0]
+    rand_100 = df.sample(100)
+    return rand_100['artist_uri'].tolist()
 
 
 def select_top_tracks(db_conn, table_name, previous_date):
@@ -352,8 +370,8 @@ def select_top_tracks(db_conn, table_name, previous_date):
     prev_pop = 'pop_{}'.format(previous_date)
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
-    df['category'] = df[prev_pop].apply(lambda x: set_category(x))
-    df.loc[df['trade_rec'] == 1, 'category'] = 8
+    # df['category'] = df[prev_pop].apply(lambda x: set_category(x))
+    # df.loc[df['trade_rec'] == 1, 'category'] = 8
     df['pop_diff'] = df[today_pop] - df[prev_pop]
     df['pop_diff_pct'] = (df['pop_diff']/df[prev_pop])*100
     # df['pop_diff_pct'] = df['pop_diff_pct'].apply(lambda x: min(100, x))
@@ -362,23 +380,23 @@ def select_top_tracks(db_conn, table_name, previous_date):
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
     # df['foll_diff_pct'] = df['foll_diff_pct'].apply(lambda x: min(100, x))
     # df = stat_score(df, 'foll_diff_pct', 'foll_diff_score')
-    # df['category'] = pd.cut(df[prev_pop], 25)
+    df['category'] = pd.cut(df[prev_pop], 10)
     # df = df.sort_values(by='final_score', ascending=False)
 
     categories = df['category'].unique()
-    category_num = 1
     artist_uris = set()
+    num_albums = 6
     for category in sorted(categories):
         category_df = df[df['category'] == category]
-        num_albums = 5
-        if category in [0, 1, 2, 3]:
-            num_albums = 1
-        elif category in [4, 7]:
-            num_albums = 6
-        elif category in [5, 6]:
-            num_albums = 10
-        else:
-            num_albums = 30
+        # num_albums = 5
+        # if category in [0, 1, 2, 3]:
+        #     num_albums = 1
+        # elif category in [4, 7]:
+        #     num_albums = 6
+        # elif category in [5, 6]:
+        #     num_albums = 10
+        # else:
+        #     num_albums = 30
         # category_df = stat_score(category_df, 'pop_diff',
         #                          'pop_diff_score')
         # category_df = stat_score(category_df, 'foll_diff',
@@ -388,15 +406,14 @@ def select_top_tracks(db_conn, table_name, previous_date):
         category_df = category_df.sort_values(by='final_score',
                                               ascending=False)
         category_df = category_df.head(num_albums)
-        print(category_df.loc[:, ['artist_uri', 'category', 'trade_rec', prev_pop,
-                                  prev_foll, 'pop_diff', 'foll_diff',
-                                  'final_score']])
+        # print(category_df.loc[:, ['artist_uri', 'category', 'trade_rec',
+        #                          prev_pop, prev_foll, 'pop_diff', 'foll_diff',
+        #                          'final_score']])
         artist_uris.update(category_df['artist_uri'].tolist())
-        category_num += 1
     return artist_uris
 
 
-def rebuild_playlist(db_conn, sp_conn, table_name, prev_date, playlist):
+def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
     get_album_from_artist = 'SELECT albums.json_text FROM album_artists ' \
                             + 'INNER JOIN albums ON album_artists.album_uri ' \
                             + '= albums.spotify_uri WHERE ' \
@@ -407,8 +424,6 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_date, playlist):
                         + 'album_artists.album_uri = albums.spotify_uri ' \
                         + 'WHERE album_artists.artist_uri = "{}" ' \
                         + 'ORDER BY albums.add_date DESC'
-    prev_artists = select_top_tracks(db_conn, table_name,
-                                     prev_date.strftime("%Y%m%d"))
     top_tracks = set()
     for artist_uri in prev_artists:
         db_cursor = db_conn.cursor()
@@ -455,11 +470,45 @@ def pop_change_tables(db_conn, sp_conn):
     yesterday_table = 'pop_foll_{}'.format(yesterday_date.strftime("%Y%m%d"))
     weekago_date = datetime.now() - timedelta(days=7)
     weekago_table = 'pop_foll_{}'.format(weekago_date.strftime("%Y%m%d"))
-    monthago_date = datetime.now() - timedelta(days=30)
-    monthago_table = 'pop_foll_{}'.format(monthago_date.strftime("%Y%m%d"))
 
+    drop_grab_bag_table = 'DROP TABLE IF EXISTS grab_bag_diff'
+    create_grab_bag_table = 'create table grab_bag_diff as ' \
+                            + 'SELECT art.spotify_uri, art.orig_pop, ' \
+                            + 'art.orig_foll, art.current_pop, ' \
+                            + 'art.current_foll, s4.* from artists AS ' \
+                            + 'art INNER JOIN ' \
+                            + '(SELECT * FROM ' + today_table_name + ' AS td ' \
+                            + 'INNER JOIN ' \
+                            + '(SELECT * FROM ' + yesterday_table + ' AS yt ' \
+                            + 'INNER JOIN ' \
+                            + '(SELECT * from album_artists AS aa INNER JOIN ' \
+                            + '(SELECT a.spotify_uri, a.release_date, ' \
+                            + 'a.trade_rec ' \
+                            + 'FROM albums AS a WHERE trade_rec = 0) ' \
+                            + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
+                            + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
+                            + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
+                            + 's4.artist_uri = art.spotify_uri WHERE '\
+                            + 'art.current_pop >= 20 AND art.current_pop <= 70'
     drop_yesterday_table = 'DROP TABLE IF EXISTS yesterday_diff'
     create_yesterday_table = 'create table yesterday_diff as ' \
+                             + 'SELECT art.spotify_uri, art.orig_pop, ' \
+                             + 'art.orig_foll, art.current_pop, ' \
+                             + 'art.current_foll, s4.* from artists AS ' \
+                             + 'art INNER JOIN ' \
+                             + '(SELECT * FROM ' + today_table_name + ' AS td ' \
+                             + 'INNER JOIN ' \
+                             + '(SELECT * FROM ' + yesterday_table + ' AS yt ' \
+                             + 'INNER JOIN ' \
+                             + '(SELECT * from album_artists AS aa INNER JOIN ' \
+                             + '(SELECT a.spotify_uri, a.release_date, ' \
+                             + 'a.trade_rec ' \
+                             + 'FROM albums AS a WHERE trade_rec = 1) ' \
+                             + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
+                             + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
+                             + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
+                             + 's4.artist_uri = art.spotify_uri'
+    '''create table yesterday_diff as ' \
                              + 'SELECT * from albums AS al INNER JOIN' \
                              + '(SELECT * from album_artists AS aa INNER JOIN '\
                              + '(SELECT * FROM ' \
@@ -468,9 +517,26 @@ def pop_change_tables(db_conn, sp_conn):
                              + yesterday_table + '.artist_uri = ' \
                              + 'today.artist_uri) as s1 ON s1.artist_uri = ' \
                              + 'aa.artist_uri) as s2 ON s2.album_uri = ' \
-                             + 'al.spotify_uri'
+                             + 'al.spotify_uri'''
     drop_weekago_table = 'DROP TABLE IF EXISTS weekago_diff'
     create_weekago_table = 'create table weekago_diff as ' \
+                           + 'SELECT art.spotify_uri, art.orig_pop, ' \
+                           + 'art.orig_foll, art.current_pop, ' \
+                           + 'art.current_foll, s4.* from artists AS ' \
+                           + 'art INNER JOIN ' \
+                           + '(SELECT * FROM ' + today_table_name + ' AS td ' \
+                           + 'INNER JOIN ' \
+                           + '(SELECT * FROM ' + weekago_table + ' AS yt ' \
+                           + 'INNER JOIN ' \
+                           + '(SELECT * from album_artists AS aa INNER JOIN ' \
+                           + '(SELECT a.spotify_uri, a.release_date, ' \
+                           + 'a.trade_rec ' \
+                           + 'FROM albums AS a WHERE trade_rec = 1) ' \
+                           + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
+                           + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
+                           + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
+                           + 's4.artist_uri = art.spotify_uri'
+    '''create table weekago_diff as ' \
                            + 'SELECT * from albums AS al INNER JOIN' \
                            + '(SELECT * from album_artists AS aa INNER JOIN '\
                            + '(select * FROM ' \
@@ -479,39 +545,37 @@ def pop_change_tables(db_conn, sp_conn):
                            + weekago_table + '.artist_uri = ' \
                            + 'today.artist_uri) as s1 ON s1.artist_uri = ' \
                            + 'aa.artist_uri) as s2 ON s2.album_uri = ' \
-                           + 'al.spotify_uri'
-    drop_monthago_table = 'DROP TABLE IF EXISTS monthago_diff'
-    create_monthago_table = 'create table monthago_diff as ' \
-                            + 'SELECT * from albums AS al INNER JOIN' \
-                            + '(SELECT * from album_artists AS aa INNER JOIN '\
-                            + '(select * FROM ' \
-                            + monthago_table + ' INNER JOIN ' \
-                            + today_table_name + ' as today ON ' \
-                            + monthago_table + '.artist_uri = ' \
-                            + 'today.artist_uri) as s1 ON s1.artist_uri = ' \
-                            + 'aa.artist_uri) as s2 ON s2.album_uri = ' \
-                            + 'al.spotify_uri'
-    print(create_yesterday_table)
+                           + 'al.spotify_uri'''
+    # print(create_grab_bag_table)
     try:
+        log('Creating grab bag diff join')
+        db_conn.execute(drop_grab_bag_table)
+        db_conn.commit()
+        db_conn.execute(create_grab_bag_table)
+        db_conn.commit()
+        grab_bag_artists = select_grab_bag(db_conn, 'grab_bag_diff',
+                                           yesterday_date.strftime("%Y%m%d"))
+        rebuild_playlist(db_conn, sp_conn, 'grab_bag_diff', grab_bag_artists,
+                         GRAB_BAG)
         log('Creating yesterday diff join')
         db_conn.execute(drop_yesterday_table)
         db_conn.commit()
         db_conn.execute(create_yesterday_table)
         db_conn.commit()
-        rebuild_playlist(db_conn, sp_conn, 'yesterday_diff', yesterday_date,
+        ystrdy_artists = select_top_tracks(db_conn, 'yesterday_diff',
+                                           yesterday_date.strftime("%Y%m%d"))
+        rebuild_playlist(db_conn, sp_conn, 'yesterday_diff', ystrdy_artists,
                          DAILY_SAMPLER)
         log('Creating week ago diff join')
         db_conn.execute(drop_weekago_table)
         db_conn.commit()
         db_conn.execute(create_weekago_table)
         db_conn.commit()
-        rebuild_playlist(db_conn, sp_conn, 'weekago_diff', weekago_date,
+        wkago_artists = select_top_tracks(db_conn, 'weekago_diff',
+                                          weekago_date.strftime("%Y%m%d"))
+        rebuild_playlist(db_conn, sp_conn, 'weekago_diff', wkago_artists,
                          WEEKLY_SAMPLER)
-        # log('Creating month ago diff join')
-        # db_conn.execute(drop_monthago_table)
-        # db_conn.commit()
-        # db_conn.execute(create_monthago_table)
-        # db_conn.commit()
+        log('Playlists updated')
     except Exception as e:
         print(e)
         print(type(e))
@@ -582,4 +646,8 @@ if __name__ == '__main__':
         print(type(e))
         raise(e)
 
+    log('VACUUMING')
+    db_conn.execute('VACUUM')
+    db_conn.commit()
+    log('EXITING')
     db_conn.close()
