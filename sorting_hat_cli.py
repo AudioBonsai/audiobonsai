@@ -141,6 +141,8 @@ def get_album_json(db_conn, sp_conn):
                                      album_dets[u'uri']))
                 except TypeError as te:
                     log(te)
+                    log(type(te))
+                    log('Error caused by album details {}'.format(album_dets))
                     pass
         except Exception as e:
             print(e)
@@ -553,8 +555,8 @@ if __name__ == '__main__':
 
     try:
         sp_conn = get_spotify_conn()
-        for playlist_info in add_trade_rec.PLAYLISTS:
-            add_trade_rec.add_playlist_recs(playlist_info, sp_conn, db_conn)
+        for playlist_id in add_trade_rec.PLAYLISTS:
+            add_trade_rec.add_playlist_recs(playlist_id, sp_conn, db_conn)
     except Exception as e:
         print(e)
         print(type(e))
