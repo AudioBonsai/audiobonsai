@@ -15,7 +15,10 @@ CREATE_ALBUM_TABLE = """ CREATE TABLE IF NOT EXISTS albums (
                                 json_text TEXT,
                                 artists_extracted BOOLEAN default 0,
                                 release_date DATE,
-                                trade_rec BOOLEAN default 0
+                                trade_rec BOOLEAN default 0,
+                                curator_rec BOOLEAN default 0,
+                                daily_appearances INTEGER default 0,
+                                weekly_appearances INTEGER default 0
                              ) """
 CREATE_ARTIST_TABLE = """ CREATE TABLE IF NOT EXISTS artists (
                                 spotify_uri text PRIMARY KEY,
@@ -50,6 +53,16 @@ CREATE_POP_FOLL_TABLE = """ CREATE TABLE IF NOT EXISTS pop_foll (
                                 ON DELETE CASCADE
                             PRIMARY KEY (artist_uri, sample_date)
                         )"""
+CREATE_DAILY_LOG_TABLE = """ CREATE TABLE IF NOT EXISTS daily_log (
+                             album_uri TEXT,
+                             daily_list DATE,
+                             PRIMARY KEY (album_uri, daily_list)
+                         )"""
+CREATE_WEEKLY_LOG_TABLE = """ CREATE TABLE IF NOT EXISTS weekly_log (
+                              album_uri TEXT,
+                              weekly_list DATE,
+                              PRIMARY KEY (album_uri, weekly_list)
+                          )"""
 
 
 def log(descriptor):
@@ -88,6 +101,10 @@ def create_connection():
         conn.execute(CREATE_ARTIST_TABLE)
         log('Creating album_artist table')
         conn.execute(CREATE_ALBUM_ARTIST_TABLE)
+        log('Creating daily_log table')
+        conn.execute(CREATE_DAILY_LOG_TABLE)
+        log('Creating weekly_log table')
+        conn.execute(CREATE_WEEKLY_LOG_TABLE)
         log('Database created')
         return conn
     except sqlError as e:

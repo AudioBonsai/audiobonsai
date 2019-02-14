@@ -142,7 +142,7 @@ def get_album_json(db_conn, sp_conn):
                 except TypeError as te:
                     log(te)
                     log(type(te))
-                    log('Error caused by album details {}'.format(album_dets))
+                    # log('Error caused by album details {}'.format(album_dets))
                     pass
         except Exception as e:
             print(e)
@@ -371,21 +371,25 @@ def select_top_tracks(db_conn, table_name, previous_date):
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
     df['pop_diff'] = df[today_pop] - df[prev_pop]
-    df['pop_diff_pct'] = (df['pop_diff']/df[prev_pop])*100
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
-    df['category'] = pd.cut(df[prev_pop], 10)
+    df['category'] = pd.cut(df[prev_pop], 5)
+    df['final_score'] = ((df['pop_diff'] * 100) + df['foll_diff']
+                         + (df['curator_rec'] * 500))
+    df = df.sort_values(by='final_score', ascending=False)
+    df = df.drop_duplicates('album_uri', keep='first')
 
     categories = df['category'].unique()
     artist_uris = set()
-    num_albums = 6
+    num_albums = 12
     for category in sorted(categories):
         category_df = df[df['category'] == category]
-        category_df['final_score'] = (category_df['pop_diff'] * 100) \
-            + category_df['foll_diff']
-        category_df = category_df.sort_values(by='final_score',
-                                              ascending=False)
         category_df = category_df.head(num_albums)
+        print(category_df.loc[:, ['orig_pop', today_pop, 'current_pop',
+                                  prev_pop, 'pop_diff',
+                                  'orig_foll', today_foll, 'current_foll',
+                                  prev_foll, 'foll_diff',
+                                  'curator_rec', 'final_score']])
         artist_uris.update(category_df['artist_uri'].tolist())
     return artist_uris
 
@@ -414,7 +418,11 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
         album_tracks = album_json[u'tracks']
         durations = list()
         for track in album_tracks[u'items']:
+            if track is None:
+                continue
             durations.append(track[u'duration_ms'])
+        if len(durations) == 0:
+            continue
         sorted_durations = sorted(durations)
         median_duration = sorted_durations[floor(len(durations)/2)]
         track_diffs = {}
@@ -454,8 +462,9 @@ def pop_change_tables(db_conn, sp_conn):
                             + 'INNER JOIN ' \
                             + '(SELECT * from album_artists AS aa INNER JOIN ' \
                             + '(SELECT a.spotify_uri, a.release_date, ' \
-                            + 'a.trade_rec ' \
-                            + 'FROM albums AS a WHERE trade_rec = 0) ' \
+                            + 'a.trade_rec, a.curator_rec ' \
+                            + 'FROM albums AS a WHERE trade_rec = 0 and ' \
+                            + 'curator_rec = 0) ' \
                             + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
                             + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                             + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
@@ -473,8 +482,9 @@ def pop_change_tables(db_conn, sp_conn):
                              + 'INNER JOIN ' \
                              + '(SELECT * from album_artists AS aa INNER JOIN ' \
                              + '(SELECT a.spotify_uri, a.release_date, ' \
-                             + 'a.trade_rec ' \
-                             + 'FROM albums AS a WHERE trade_rec = 1) ' \
+                             + 'a.trade_rec, a.curator_rec ' \
+                             + 'FROM albums AS a WHERE trade_rec = 1 OR ' \
+                             + 'curator_rec = 1) ' \
                              + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
                              + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                              + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
@@ -491,8 +501,9 @@ def pop_change_tables(db_conn, sp_conn):
                            + 'INNER JOIN ' \
                            + '(SELECT * from album_artists AS aa INNER JOIN ' \
                            + '(SELECT a.spotify_uri, a.release_date, ' \
-                           + 'a.trade_rec ' \
-                           + 'FROM albums AS a WHERE trade_rec = 1) ' \
+                           + 'a.trade_rec, a.curator_rec ' \
+                           + 'FROM albums AS a WHERE trade_rec = 1 OR ' \
+                           + 'curator_rec = 1) ' \
                            + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
                            + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                            + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
@@ -555,8 +566,12 @@ if __name__ == '__main__':
 
     try:
         sp_conn = get_spotify_conn()
-        for playlist_id in add_trade_rec.PLAYLISTS:
-            add_trade_rec.add_playlist_recs(playlist_id, sp_conn, db_conn)
+        for playlist_id in add_trade_rec.TRADELISTS:
+            add_trade_rec.add_playlist_recs(playlist_id, sp_conn, db_conn,
+                                            'trade')
+        for playlist_id in add_trade_rec.CURATORLISTS:
+            add_trade_rec.add_playlist_recs(playlist_id, sp_conn, db_conn,
+                                            'curator')
     except Exception as e:
         print(e)
         print(type(e))
