@@ -373,15 +373,15 @@ def select_top_tracks(db_conn, table_name, previous_date):
     df['pop_diff'] = df[today_pop] - df[prev_pop]
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
-    df['category'] = pd.cut(df[prev_pop], 5)
     df['final_score'] = ((df['pop_diff'] * 100) + df['foll_diff']
                          + (df['curator_rec'] * 500))
     df = df.sort_values(by='final_score', ascending=False)
     df = df.drop_duplicates('album_uri', keep='first')
+    df['category'] = pd.cut(df[prev_pop], 10)
 
     categories = df['category'].unique()
     artist_uris = set()
-    num_albums = 12
+    num_albums = 6
     for category in sorted(categories):
         category_df = df[df['category'] == category]
         category_df = category_df.head(num_albums)
@@ -428,14 +428,21 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
         track_diffs = {}
         track_durations = {}
 
-        for track in album_tracks[u'items']:
-            for artist in track[u'artists']:
-                if artist_uri == artist[u'uri']:
-                    track_diffs[abs(track[u'duration_ms'] -
-                                median_duration)] = track[u'uri']
-                    track_durations[track[u'uri']] = track[u'duration_ms']
-            if len(track_diffs.keys()) == 3:
-                break
+        try:
+            for track in album_tracks[u'items']:
+                for artist in track[u'artists']:
+                    if artist_uri == artist[u'uri']:
+                        track_diffs[abs(track[u'duration_ms'] -
+                                    median_duration)] = track[u'uri']
+                        track_durations[track[u'uri']] = track[u'duration_ms']
+
+                if len(track_diffs.keys()) == 3:
+                    break
+        except TypeError as te:
+            err_str = 'The JSON for album by {} had missing info, not included'
+            log(err_str.format(artist_uri))
+            print(te)
+            continue
         if len(track_diffs.keys()) > 0:
             track_uri = track_diffs[sorted(track_diffs.keys())[0]]
             top_tracks.add(track_uri)

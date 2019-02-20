@@ -23,7 +23,7 @@ def add_rec(spotify_uri, db_conn, type='trade'):
     try:
         db_conn.execute(insert_stmt, (spotify_uri, TODAY, ''))
     except sqlite3.IntegrityError:
-        # Ignore duplicates
+        log('Good news, it is already in the database!')
         pass
 
     try:
