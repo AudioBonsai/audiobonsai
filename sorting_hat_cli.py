@@ -410,8 +410,12 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
         if result is None:
             log('{} ARTIST URI NOT FOUND IN DB!'.format(artist_uri))
             continue
-        album_json = json.loads(result[0])
-        album_uri = result[1]
+        try:
+            album_json = json.loads(result[0])
+        except json.decoder.JSONDecodeError as jsde:
+            log('Error processing JSON of {}'.format(artist_uri))
+            print(jsde)
+            continue
         album_tracks = album_json[u'tracks']
         durations = list()
         for track in album_tracks[u'items']:
