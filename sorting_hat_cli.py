@@ -360,7 +360,8 @@ def select_grab_bag(db_conn, table_name, previous_date):
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
     df = df[df['pop_diff'] > 0]
     df = df[df['foll_diff'] > 0]
-    rand_100 = df.sample(100)
+    rand_100 = df.sample(150)
+    rand_100 = rand_100.head(100)
     return rand_100['artist_uri'].tolist()
 
 
@@ -395,26 +396,22 @@ def select_top_tracks(db_conn, table_name, previous_date):
 
 
 def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
-    get_album_from_artist = 'SELECT albums.json_text FROM album_artists ' \
+    get_album_from_artist = 'SELECT albums.json_text, albums.album_uri ' \
+                            + 'FROM album_artists ' \
                             + 'INNER JOIN albums ON album_artists.album_uri ' \
                             + '= albums.spotify_uri WHERE ' \
                             + 'album_artists.artist_uri = "{}" ' \
                             + 'ORDER BY albums.release_date DESC LIMIT 1'
-    get_album_artists = 'SELECT albums.spotify_uri, albums.add_date FROM ' \
-                        + 'album_artists INNER JOIN albums ON ' \
-                        + 'album_artists.album_uri = albums.spotify_uri ' \
-                        + 'WHERE album_artists.artist_uri = "{}" ' \
-                        + 'ORDER BY albums.add_date DESC'
     top_tracks = set()
     for artist_uri in prev_artists:
         db_cursor = db_conn.cursor()
-        db_cursor.execute(get_album_artists.format(artist_uri))
         db_cursor.execute(get_album_from_artist.format(artist_uri))
         result = db_cursor.fetchone()
         if result is None:
             log('{} ARTIST URI NOT FOUND IN DB!'.format(artist_uri))
             continue
         album_json = json.loads(result[0])
+        album_uri = result[1]
         album_tracks = album_json[u'tracks']
         durations = list()
         for track in album_tracks[u'items']:
@@ -439,8 +436,8 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
                 if len(track_diffs.keys()) == 3:
                     break
         except TypeError as te:
-            err_str = 'The JSON for album by {} had missing info, not included'
-            log(err_str.format(artist_uri))
+            err_str = 'The JSON for {} by {} had missing info, not included'
+            log(err_str.format(album_uri, artist_uri))
             print(te)
             continue
         if len(track_diffs.keys()) > 0:
