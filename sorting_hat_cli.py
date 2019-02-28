@@ -114,7 +114,7 @@ def insert_albums(conn, album_list):
         dir(e)
 
 
-def get_album_json(db_conn, sp_conn):
+def get_album_json(db_conn):
     select_stmt = 'SELECT spotify_uri from albums where json_text = ""'
     update_stmt = 'UPDATE albums set json_text = ? where spotify_uri = ?'
     log('Retrieving albums to update')
@@ -129,6 +129,7 @@ def get_album_json(db_conn, sp_conn):
     offset = 0
     batch_size = 20
     update_list = set()
+    sp_conn = get_spotify_conn()
     log('Requesting JSON for {:d} albums'.format(len(albums)))
     while offset < len(albums):
         sp_uri_list = [album[0] for album in
@@ -142,7 +143,7 @@ def get_album_json(db_conn, sp_conn):
                 except TypeError as te:
                     log(te)
                     log(type(te))
-                    # log('Error caused by album details {}'.format(album_dets))
+                    log('Error caused by album details {}'.format(album_dets))
                     pass
         except Exception as e:
             print(e)
@@ -161,7 +162,7 @@ def get_album_json(db_conn, sp_conn):
     log('Album JSON retrieved')
 
 
-def extract_artists(db_conn, sp_conn):
+def extract_artists(db_conn):
     select_stmt = 'SELECT spotify_uri, json_text from albums ' \
                   + 'where artists_extracted = 0 and json_text is not ""'
     update_stmt = 'UPDATE albums set artists_extracted = 1, ' \
@@ -244,7 +245,7 @@ def extract_artists(db_conn, sp_conn):
         raise(e)
 
 
-def get_artist_json(db_conn, sp_conn):
+def get_artist_json(db_conn):
     today_name = datetime.now().strftime("%Y%m%d")
     select_stmt = 'SELECT spotify_uri from artists where last_json_date ' \
                   + 'is not "' + TODAY + '"'
@@ -274,6 +275,7 @@ def get_artist_json(db_conn, sp_conn):
     batch_size = 50
     update_list = set()
     insert_pop_foll_list = set()
+    sp_conn = get_spotify_conn()
     log('Requesting JSON for {:d} artists'.format(len(artists)))
     while offset < len(artists):
         sp_uri_list = [artist[0] for artist in
@@ -395,13 +397,16 @@ def select_top_tracks(db_conn, table_name, previous_date):
     return artist_uris
 
 
-def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
-    get_album_from_artist = 'SELECT albums.json_text, albums.album_uri ' \
+def rebuild_playlist(db_conn, table_name, prev_artists, playlist,
+                     type):
+    get_album_from_artist = 'SELECT albums.json_text, albums.spotify_uri ' \
                             + 'FROM album_artists ' \
                             + 'INNER JOIN albums ON album_artists.album_uri ' \
                             + '= albums.spotify_uri WHERE ' \
                             + 'album_artists.artist_uri = "{}" ' \
                             + 'ORDER BY albums.release_date DESC LIMIT 1'
+    insert_into_log = 'INSERT INTO ' + type + '_log (album_uri, ' + type + \
+                      '_list) VALUES(?, ?)'
     top_tracks = set()
     for artist_uri in prev_artists:
         db_cursor = db_conn.cursor()
@@ -411,9 +416,11 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
             log('{} ARTIST URI NOT FOUND IN DB!'.format(artist_uri))
             continue
         try:
+            album_uri = result[1]
             album_json = json.loads(result[0])
         except json.decoder.JSONDecodeError as jsde:
-            log('Error processing JSON of {}'.format(artist_uri))
+            log('Error processing JSON of {} by {}'.format(album_uri,
+                                                           artist_uri))
             print(jsde)
             continue
         album_tracks = album_json[u'tracks']
@@ -447,11 +454,19 @@ def rebuild_playlist(db_conn, sp_conn, table_name, prev_artists, playlist):
         if len(track_diffs.keys()) > 0:
             track_uri = track_diffs[sorted(track_diffs.keys())[0]]
             top_tracks.add(track_uri)
+            if type in ['daily', 'weekly']:
+                try:
+                    db_conn.execute(insert_into_log, (album_uri, TODAY))
+                except sqlite3.IntegrityError as ie:
+                    # Skip existing entry
+                    pass
+    db_conn.commit()
+    sp_conn = get_spotify_conn()
     sp_conn.user_playlist_replace_tracks(settings.SPOTIFY_USERNAME,
                                          playlist, top_tracks)
 
 
-def pop_change_tables(db_conn, sp_conn):
+def pop_change_tables(db_conn):
     today_table_name = 'pop_foll_' + datetime.now().strftime("%Y%m%d")
     yesterday_date = datetime.now() - timedelta(days=1)
     yesterday_table = 'pop_foll_{}'.format(yesterday_date.strftime("%Y%m%d"))
@@ -491,8 +506,12 @@ def pop_change_tables(db_conn, sp_conn):
                              + '(SELECT * from album_artists AS aa INNER JOIN ' \
                              + '(SELECT a.spotify_uri, a.release_date, ' \
                              + 'a.trade_rec, a.curator_rec ' \
-                             + 'FROM albums AS a WHERE trade_rec = 1 OR ' \
-                             + 'curator_rec = 1) ' \
+                             + 'FROM albums AS a WHERE (trade_rec = 1 OR ' \
+                             + 'curator_rec = 1) and a.spotify_uri not in (' \
+                             + 'select album_uri as spotify_uri from (select ' \
+                             + 'album_uri, count(album_uri) as appearences ' \
+                             + 'from daily_log group by album_uri) as ' \
+                             + 'daily_count where appearences > 6)) ' \
                              + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
                              + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                              + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
@@ -510,8 +529,12 @@ def pop_change_tables(db_conn, sp_conn):
                            + '(SELECT * from album_artists AS aa INNER JOIN ' \
                            + '(SELECT a.spotify_uri, a.release_date, ' \
                            + 'a.trade_rec, a.curator_rec ' \
-                           + 'FROM albums AS a WHERE trade_rec = 1 OR ' \
-                           + 'curator_rec = 1) ' \
+                           + 'FROM albums AS a WHERE (trade_rec = 1 OR ' \
+                           + 'curator_rec = 1) and a.spotify_uri not in (' \
+                           + 'select album_uri as spotify_uri from (select ' \
+                           + 'album_uri, count(album_uri) as appearences ' \
+                           + 'from weekly_log group by album_uri) as ' \
+                           + 'weekly_count where appearences > 6)) ' \
                            + 'AS s1 ON s1.spotify_uri = aa.album_uri) AS s2 ' \
                            + 'ON s2.artist_uri = yt.artist_uri) AS s3 ON ' \
                            + 'td.artist_uri = s3.artist_uri) AS s4 ON ' \
@@ -524,8 +547,8 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.commit()
         grab_bag_artists = select_grab_bag(db_conn, 'grab_bag_diff',
                                            yesterday_date.strftime("%Y%m%d"))
-        rebuild_playlist(db_conn, sp_conn, 'grab_bag_diff', grab_bag_artists,
-                         GRAB_BAG)
+        rebuild_playlist(db_conn, 'grab_bag_diff', grab_bag_artists,
+                         GRAB_BAG, 'grab_bag')
         log('Creating yesterday diff join')
         db_conn.execute(drop_yesterday_table)
         db_conn.commit()
@@ -533,8 +556,8 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.commit()
         ystrdy_artists = select_top_tracks(db_conn, 'yesterday_diff',
                                            yesterday_date.strftime("%Y%m%d"))
-        rebuild_playlist(db_conn, sp_conn, 'yesterday_diff', ystrdy_artists,
-                         DAILY_SAMPLER)
+        rebuild_playlist(db_conn, 'yesterday_diff', ystrdy_artists,
+                         DAILY_SAMPLER, 'daily')
         log('Creating week ago diff join')
         db_conn.execute(drop_weekago_table)
         db_conn.commit()
@@ -542,8 +565,8 @@ def pop_change_tables(db_conn, sp_conn):
         db_conn.commit()
         wkago_artists = select_top_tracks(db_conn, 'weekago_diff',
                                           weekago_date.strftime("%Y%m%d"))
-        rebuild_playlist(db_conn, sp_conn, 'weekago_diff', wkago_artists,
-                         WEEKLY_SAMPLER)
+        rebuild_playlist(db_conn, 'weekago_diff', wkago_artists,
+                         WEEKLY_SAMPLER, 'weekly')
         log('Playlists updated')
     except Exception as e:
         print(e)
@@ -573,28 +596,26 @@ if __name__ == '__main__':
         raise(e)
 
     try:
-        sp_conn = get_spotify_conn()
         for playlist_id in add_trade_rec.TRADELISTS:
-            add_trade_rec.add_playlist_recs(playlist_id, sp_conn, db_conn,
-                                            'trade')
+            add_trade_rec.add_playlist_recs(playlist_id, get_spotify_conn(),
+                                            db_conn, 'trade')
         for playlist_id in add_trade_rec.CURATORLISTS:
-            add_trade_rec.add_playlist_recs(playlist_id, sp_conn, db_conn,
-                                            'curator')
+            add_trade_rec.add_playlist_recs(playlist_id, get_spotify_conn(),
+                                            db_conn, 'curator')
     except Exception as e:
         print(e)
         print(type(e))
         raise(e)
 
     try:
-        get_album_json(db_conn, sp_conn)
+        get_album_json(db_conn)
     except Exception as e:
         print(e)
         print(type(e))
         raise(e)
 
     try:
-        sp_conn = get_spotify_conn()
-        extract_artists(db_conn, sp_conn)
+        extract_artists(db_conn)
     except Exception as e:
         print(e)
         print(type(e))
@@ -621,8 +642,7 @@ if __name__ == '__main__':
         raise(e)
 
     try:
-        sp_conn = get_spotify_conn()
-        get_artist_json(db_conn, sp_conn)
+        get_artist_json(db_conn)
     except Exception as e:
         print(e)
         print(type(e))
@@ -640,8 +660,7 @@ if __name__ == '__main__':
         raise(e)
 
     try:
-        sp_conn = get_spotify_conn()
-        pop_change_tables(db_conn, sp_conn)
+        pop_change_tables(db_conn)
     except Exception as e:
         print(e)
         print(type(e))
