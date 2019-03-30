@@ -351,25 +351,28 @@ def stat_score(df, in_col, out_col):
     return df
 
 
-def select_grab_bag(db_conn, table_name, previous_date):
-    today_pop = 'pop_{}'.format(datetime.now().strftime("%Y%m%d"))
-    today_foll = 'foll_{}'.format(datetime.now().strftime("%Y%m%d"))
+def select_grab_bag(db_conn, table_name, today_date, previous_date):
+    today_pop = 'pop_{}'.format(today_date)
+    today_foll = 'foll_{}'.format(today_date)
     prev_pop = 'pop_{}'.format(previous_date)
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
     df['pop_diff'] = df[today_pop] - df[prev_pop]
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
-    df = df[df['pop_diff'] > 0]
+    print(len(df))
+    #df = df[df['pop_diff'] > 0]
+    #print(len(df))
     df = df[df['foll_diff'] > 0]
+    print(len(df))
     rand_100 = df.sample(150)
     rand_100 = rand_100.head(100)
     return rand_100['artist_uri'].tolist()
 
 
-def select_top_tracks(db_conn, table_name, previous_date):
-    today_pop = 'pop_{}'.format(datetime.now().strftime("%Y%m%d"))
-    today_foll = 'foll_{}'.format(datetime.now().strftime("%Y%m%d"))
+def select_top_tracks(db_conn, table_name, today_date, previous_date):
+    today_pop = 'pop_{}'.format(today_date)
+    today_foll = 'foll_{}'.format(today_date)
     prev_pop = 'pop_{}'.format(previous_date)
     prev_foll = 'foll_{}'.format(previous_date)
     df = pd.read_sql('SELECT * from {}'.format(table_name), db_conn)
@@ -398,7 +401,7 @@ def select_top_tracks(db_conn, table_name, previous_date):
 
 
 def rebuild_playlist(db_conn, table_name, prev_artists, playlist,
-                     type):
+                     type, today_date):
     get_album_from_artist = 'SELECT albums.json_text, albums.spotify_uri ' \
                             + 'FROM album_artists ' \
                             + 'INNER JOIN albums ON album_artists.album_uri ' \
@@ -455,8 +458,9 @@ def rebuild_playlist(db_conn, table_name, prev_artists, playlist,
             track_uri = track_diffs[sorted(track_diffs.keys())[0]]
             top_tracks.add(track_uri)
             if type in ['daily', 'weekly']:
+                today_string = today_date.strftime("%Y-%m-%d 00:00:00.000000")
                 try:
-                    db_conn.execute(insert_into_log, (album_uri, TODAY))
+                    db_conn.execute(insert_into_log, (album_uri, today_string))
                 except sqlite3.IntegrityError as ie:
                     # Skip existing entry
                     pass
@@ -467,7 +471,8 @@ def rebuild_playlist(db_conn, table_name, prev_artists, playlist,
 
 
 def pop_change_tables(db_conn):
-    today_table_name = 'pop_foll_' + datetime.now().strftime("%Y%m%d")
+    today_date = datetime.now()
+    today_table_name = 'pop_foll_{}'.format(today_date.strftime("%Y%m%d"))
     yesterday_date = datetime.now() - timedelta(days=1)
     yesterday_table = 'pop_foll_{}'.format(yesterday_date.strftime("%Y%m%d"))
     weekago_date = datetime.now() - timedelta(days=7)
@@ -546,27 +551,30 @@ def pop_change_tables(db_conn):
         db_conn.execute(create_grab_bag_table)
         db_conn.commit()
         grab_bag_artists = select_grab_bag(db_conn, 'grab_bag_diff',
+                                           today_date.strftime("%Y%m%d"),
                                            yesterday_date.strftime("%Y%m%d"))
         rebuild_playlist(db_conn, 'grab_bag_diff', grab_bag_artists,
-                         GRAB_BAG, 'grab_bag')
+                         GRAB_BAG, 'grab_bag', today_date)
         log('Creating yesterday diff join')
         db_conn.execute(drop_yesterday_table)
         db_conn.commit()
         db_conn.execute(create_yesterday_table)
         db_conn.commit()
         ystrdy_artists = select_top_tracks(db_conn, 'yesterday_diff',
+                                           today_date.strftime("%Y%m%d"),
                                            yesterday_date.strftime("%Y%m%d"))
         rebuild_playlist(db_conn, 'yesterday_diff', ystrdy_artists,
-                         DAILY_SAMPLER, 'daily')
+                         DAILY_SAMPLER, 'daily', today_date)
         log('Creating week ago diff join')
         db_conn.execute(drop_weekago_table)
         db_conn.commit()
         db_conn.execute(create_weekago_table)
         db_conn.commit()
         wkago_artists = select_top_tracks(db_conn, 'weekago_diff',
+                                          today_date.strftime("%Y%m%d"),
                                           weekago_date.strftime("%Y%m%d"))
         rebuild_playlist(db_conn, 'weekago_diff', wkago_artists,
-                         WEEKLY_SAMPLER, 'weekly')
+                         WEEKLY_SAMPLER, 'weekly', today_date)
         log('Playlists updated')
     except Exception as e:
         print(e)
@@ -661,6 +669,15 @@ if __name__ == '__main__':
 
     try:
         pop_change_tables(db_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    try:
+        # Clean out artists json_text
+        db_conn.execute('UPDATE artists SET json_text = ""')
+        db_conn.commit()
     except Exception as e:
         print(e)
         print(type(e))
