@@ -361,8 +361,9 @@ def select_grab_bag(db_conn, table_name, today_date, previous_date):
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
     print(len(df))
-    #df = df[df['pop_diff'] > 0]
-    #print(len(df))
+    if df['pop_diff'].max() > 0:
+        df = df[df['pop_diff'] > 0]
+        print(len(df))
     df = df[df['foll_diff'] > 0]
     print(len(df))
     rand_100 = df.sample(150)
