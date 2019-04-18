@@ -114,26 +114,17 @@ def insert_albums(conn, album_list):
         dir(e)
 
 
-def get_album_json(db_conn):
-    select_stmt = 'SELECT spotify_uri from albums where json_text = ""'
+def get_album_list_json(db_conn, albums):
     update_stmt = 'UPDATE albums set json_text = ? where spotify_uri = ?'
-    log('Retrieving albums to update')
-    try:
-        db_cursor = db_conn.cursor()
-        db_cursor.execute(select_stmt)
-        albums = db_cursor.fetchall()
-    except Exception as e:
-        print(e)
-        print(type(e))
-
     offset = 0
     batch_size = 20
     update_list = set()
     sp_conn = get_spotify_conn()
     log('Requesting JSON for {:d} albums'.format(len(albums)))
     while offset < len(albums):
-        sp_uri_list = [album[0] for album in
+        sp_uri_list = [album[0].rstrip() for album in
                        albums[offset:offset + batch_size]]
+        log(sp_uri_list)
         try:
             album_dets_list = sp_conn.albums(sp_uri_list)
             for album_dets in album_dets_list[u'albums']:
@@ -160,6 +151,21 @@ def get_album_json(db_conn):
             print(type(e))
     log('Album JSON updated in database')
     log('Album JSON retrieved')
+
+
+def get_album_json(db_conn):
+    select_stmt = 'SELECT spotify_uri from albums where ' \
+                  'artists_extracted = 0 and json_text = ""'
+    log('Retrieving albums to update')
+    try:
+        db_cursor = db_conn.cursor()
+        db_cursor.execute(select_stmt)
+        albums = db_cursor.fetchall()
+    except Exception as e:
+        print(e)
+        print(type(e))
+
+    get_album_list_json(db_conn, albums)
 
 
 def extract_artists(db_conn):
@@ -366,8 +372,10 @@ def select_grab_bag(db_conn, table_name, today_date, previous_date):
         print(len(df))
     df = df[df['foll_diff'] > 0]
     print(len(df))
-    rand_100 = df.sample(150)
-    rand_100 = rand_100.head(100)
+    rand_100 = df.sample(min(150, len(df)))
+    rand_100 = rand_100.head(min(100, len(df)))
+    album_uris = [[album_uri] for album_uri in rand_100['album_uri'].tolist()]
+    get_album_list_json(db_conn, album_uris)
     return rand_100['artist_uri'].tolist()
 
 
@@ -388,6 +396,7 @@ def select_top_tracks(db_conn, table_name, today_date, previous_date):
 
     categories = df['category'].unique()
     artist_uris = set()
+    album_uris = []
     num_albums = 6
     for category in sorted(categories):
         category_df = df[df['category'] == category]
@@ -398,6 +407,9 @@ def select_top_tracks(db_conn, table_name, today_date, previous_date):
                                   prev_foll, 'foll_diff',
                                   'curator_rec', 'final_score']])
         artist_uris.update(category_df['artist_uri'].tolist())
+        album_uris = [[album_uri] for album_uri in
+                      category_df['album_uri'].tolist()]
+        get_album_list_json(db_conn, album_uris)
     return artist_uris
 
 
@@ -678,6 +690,8 @@ if __name__ == '__main__':
     try:
         # Clean out artists json_text
         db_conn.execute('UPDATE artists SET json_text = ""')
+        # Clean out albums json_text
+        db_conn.execute('UPDATE albums SET json_text = ""')
         db_conn.commit()
     except Exception as e:
         print(e)
