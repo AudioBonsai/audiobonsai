@@ -16,9 +16,9 @@ from spotipy import SpotifyException
 from urllib.request import urlopen
 
 
-EVERYNOISE_URL = 'http://everynoise.com/spotify_new_releases.html'
-GROUP_TEXT = 'spotify:album:.* .* albumid=(spotify:album:.*) nolink=true ' \
-             + 'onclick="playmeta.*'
+# EVERYNOISE_URL = 'http://everynoise.com/spotify_new_releases.html'
+EVERYNOISE_URL = 'http://everynoise.com/new_releases_by_genre.cgi'
+GROUP_TEXT = '(spotify:album:.*)">.*</a>'
 TODAY = datetime.now().strftime("%Y-%m-%d 00:00:00.000000")
 DAILY_SAMPLER = 'spotify:user:audiobonsai:playlist:5CmD30dzQjCujR4CAnL8qc'
 WEEKLY_SAMPLER = 'spotify:user:audiobonsai:playlist:1FPe3BebdleEhyjPVmDgbr'
@@ -79,7 +79,7 @@ def find_albums(html):
     group_string = re.compile(GROUP_TEXT)
     candidate_list = set()
     log('Splitting HTML')
-    releases = html.split('</div><div class=')
+    releases = html.split('</div><!--')
     log('Processing {:d} rows'.format(len(releases)))
     for release in releases:
         # print("Release: {}".format(release))
@@ -124,7 +124,6 @@ def get_album_list_json(db_conn, albums):
     while offset < len(albums):
         sp_uri_list = [album[0].rstrip() for album in
                        albums[offset:offset + batch_size]]
-        log(sp_uri_list)
         try:
             album_dets_list = sp_conn.albums(sp_uri_list)
             for album_dets in album_dets_list[u'albums']:
@@ -367,7 +366,7 @@ def select_grab_bag(db_conn, table_name, today_date, previous_date):
     df['foll_diff'] = df[today_foll] - df[prev_foll]
     df['foll_diff_pct'] = (df['foll_diff']/df[prev_foll])*100
     print(len(df))
-    if df['pop_diff'].max() > 0:
+    if df['pop_diff'].max() > 0 and len(df[df['pop_diff'] > 0]) >= 150:
         df = df[df['pop_diff'] > 0]
         print(len(df))
     df = df[df['foll_diff'] > 0]
@@ -642,26 +641,6 @@ if __name__ == '__main__':
         print(type(e))
         raise(e)
 
-    cutoff_date = datetime.now() - timedelta(days=30)
-    cutoff_str = cutoff_date.strftime("%Y-%m-%d 00:00:00.000000")
-    try:
-        db_conn.execute('DELETE FROM albums WHERE release_date < "{}"'.format(
-                        cutoff_str))
-        db_conn.commit()
-    except Exception as e:
-        print(e)
-        print(type(e))
-        raise(e)
-
-    try:
-        db_conn.execute('DELETE from artists where artists.spotify_uri not '
-                        + 'in (select distinct artist_uri from album_artists)')
-        db_conn.commit()
-    except Exception as e:
-        print(e)
-        print(type(e))
-        raise(e)
-
     try:
         get_artist_json(db_conn)
     except Exception as e:
@@ -682,6 +661,37 @@ if __name__ == '__main__':
 
     try:
         pop_change_tables(db_conn)
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    try:
+        # Clean out artists json_text
+        db_conn.execute('UPDATE artists SET json_text = ""')
+        db_conn.commit()
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    cutoff_date = datetime.now() - timedelta(days=30)
+    cutoff_str = cutoff_date.strftime("%Y-%m-%d 00:00:00.000000")
+    try:
+        print('DELETE FROM albums WHERE release_date < "{}"'.format(
+                        cutoff_str))
+        db_conn.execute('DELETE FROM albums WHERE release_date < "{}"'.format(
+                        cutoff_str))
+        db_conn.commit()
+    except Exception as e:
+        print(e)
+        print(type(e))
+        raise(e)
+
+    try:
+        db_conn.execute('DELETE from artists where artists.spotify_uri not '
+                        + 'in (select distinct artist_uri from album_artists)')
+        db_conn.commit()
     except Exception as e:
         print(e)
         print(type(e))
